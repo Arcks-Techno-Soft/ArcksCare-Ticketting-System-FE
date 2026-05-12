@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -------------------------------------------------------------------------- */
+/* Premium base styles - generous, restrained, type-driven                    */
+/* -------------------------------------------------------------------------- */
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-white text-ink font-sans;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  /* Subtle selection - keep it brand-coherent */
+  ::selection {
+    background-color: #0a0a0a;
+    color: #ffffff;
+  }
+
+  /* Premium scrollbar (WebKit) */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #d4d4d4;
+    border-radius: 999px;
+    border: 2px solid #ffffff;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #a3a3a3;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .grain {
+    /* Almost imperceptible texture - adds depth without noise */
+    background-image:
+      radial-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+    background-size: 3px 3px;
+  }
+}
