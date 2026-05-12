@@ -27,6 +27,8 @@ import {
   Select,
   Textarea,
 } from "@/components/ui/Field";
+import { TicketSummary } from "@/components/ticket-summary";
+import { FileDropZone, type SelectedFile } from "@/components/file-drop-zone";
 
 // Leaflet touches `window`, so the map must be client-only.
 const AddressMap = dynamic(() => import("@/components/address-map"), {
@@ -43,6 +45,7 @@ export function TicketForm() {
   const [step, setStep] = useState<Step>("form");
   const [duplicate, setDuplicate] = useState<DuplicateError | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<SelectedFile[]>([]);
 
   const {
     register,
@@ -56,9 +59,10 @@ export function TicketForm() {
     defaultValues: { severity: "MEDIUM" },
   });
 
-  // Watch geo so we can pass it back to the map (and show a subtle indicator).
-  const lat = watch("latitude");
-  const lng = watch("longitude");
+  // Watch every field so the summary updates live as the customer types.
+  const watched = watch();
+  const lat = watched.latitude;
+  const lng = watched.longitude;
 
   const onLocationChange = (loc: {
     lat: number;
@@ -99,7 +103,7 @@ export function TicketForm() {
     setDuplicate(null);
     setServerError(null);
     setStep("submitting");
-    const res = await submitTicket(values);
+    const res = await submitTicket(values, attachments.map((a) => a.file));
     if (res.kind === "created") {
       const q = new URLSearchParams({
         ref: res.ticket.reference,
@@ -353,6 +357,18 @@ export function TicketForm() {
           </FieldGroup>
         </Grid>
       </Section>
+
+      {/* ------------------------------ Attachments ---------------------- */}
+      <Section
+        index="05"
+        title="Attach photos or videos"
+        caption="Optional. A picture of the issue, error screen, or device makes diagnosis faster."
+      >
+        <FileDropZone files={attachments} onChange={setAttachments} />
+      </Section>
+
+      {/* ------------------------------ Review --------------------------- */}
+      <TicketSummary values={watched} attachments={attachments.map((a) => a.file)} />
 
       {/* ------------------------------ Submit --------------------------- */}
       <AnimatePresence>

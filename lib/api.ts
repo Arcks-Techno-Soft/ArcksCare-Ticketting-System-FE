@@ -31,12 +31,25 @@ export type SubmitResult =
   | { kind: "duplicate"; info: DuplicateError }
   | { kind: "error"; message: string };
 
-export async function submitTicket(values: TicketFormValues): Promise<SubmitResult> {
+/**
+ * Submit a ticket as multipart/form-data so attachments can ride along.
+ * - Form field `payload` carries the JSON-encoded ticket data.
+ * - Form field `files` (repeated) carries any uploaded files.
+ */
+export async function submitTicket(
+  values: TicketFormValues,
+  files: File[] = []
+): Promise<SubmitResult> {
   try {
+    const fd = new FormData();
+    fd.append("payload", JSON.stringify(values));
+    for (const f of files) fd.append("files", f, f.name);
+
     const res = await fetch(`${BASE}/api/v1/tickets`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
+      body: fd,
+      // NOTE: do NOT set Content-Type - the browser sets the correct
+      // multipart boundary header automatically.
     });
 
     if (res.status === 201) {
@@ -45,13 +58,12 @@ export async function submitTicket(values: TicketFormValues): Promise<SubmitResu
     }
     if (res.status === 409) {
       const body = await res.json();
-      // FastAPI HTTPException wraps detail under `detail`
       const info = (body.detail ?? body) as DuplicateError;
       return { kind: "duplicate", info };
     }
 
     const txt = await res.text();
-    return { kind: "error", message: `Server error (${res.status}): ${txt.slice(0, 200)}` };
+    return { kind: "error", message: `Server error (${res.status}): ${txt.slice(0, 300)}` };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Network error";
     return { kind: "error", message: msg };
