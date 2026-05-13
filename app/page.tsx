@@ -22,7 +22,13 @@ export default function Home() {
             ArcksCare
           </span>
         </div>
-        <nav className="flex items-center gap-2">
+        <nav className="flex items-center gap-4">
+          <Link
+            href="/admin/login"
+            className="text-[13px] text-ink-muted hover:text-ink transition-colors"
+          >
+            Admin login
+          </Link>
           <Link href="/raise-ticket">
             <Button variant="primary" size="md">
               Raise a ticket

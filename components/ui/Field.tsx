@@ -54,9 +54,21 @@ type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
 };
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { options, placeholder = "Select…", className, ...rest },
+  { options, placeholder = "Select…", className, value, defaultValue, ...rest },
   ref
 ) {
+  // A <select> can't be both controlled (`value=`) and uncontrolled (`defaultValue=`).
+  // We support both styles by only applying one prop based on what the parent passed.
+  const isControlled = value !== undefined;
+  const controlProps = isControlled
+    ? { value }
+    : { defaultValue: defaultValue ?? "" };
+
+  // When used as a filter, allow the empty-value option to be re-selectable
+  // (i.e. "no filter"). When used in the ticket form, the empty option is
+  // disabled so customers must pick a real value.
+  const allowEmpty = isControlled;
+
   return (
     <div className="relative">
       <select
@@ -67,10 +79,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
           // Ensure native option look stays clean
           className
         )}
-        defaultValue=""
+        {...controlProps}
         {...rest}
       >
-        <option value="" disabled>
+        <option value="" disabled={!allowEmpty}>
           {placeholder}
         </option>
         {options.map((o) => (

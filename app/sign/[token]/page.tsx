@@ -1,0 +1,298 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+
+import { Button } from "@/components/ui/Button";
+import { Input, Label, FieldGroup } from "@/components/ui/Field";
+import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+type PublicDoc = {
+  reference: string;
+  business_name: string;
+  contact_name: string;
+  address_line1: string;
+  address_line2?: string | null;
+  address_line3?: string | null;
+  city: string;
+  state: string;
+  pincode: string;
+  product_category: string;
+  serial_number: string;
+  issue_category: string;
+  description?: string | null;
+  resolution_summary?: string | null;
+  engineer_name?: string | null;
+  resolved_at?: string | null;
+  customer_signed_at?: string | null;
+};
+
+export default function CustomerSignPage() {
+  const params = useParams<{ token: string }>();
+  const token = params?.token?.toString() ?? "";
+
+  const [doc, setDoc] = useState<PublicDoc | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [signerName, setSignerName] = useState("");
+  const [empty, setEmpty] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const padRef = useRef<SignaturePadHandle>(null);
+
+  const fetchDoc = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/sign/${token}`);
+      if (res.status === 404) {
+        setLoadError("This signing link wasn't found. It may have been removed.");
+        return;
+      }
+      if (res.status === 410) {
+        setLoadError("This signing link has expired. Please request a new one from ArcksCare support.");
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as PublicDoc;
+      setDoc(data);
+      setSignerName(data.contact_name);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load resolution document");
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (token) fetchDoc();
+  }, [token, fetchDoc]);
+
+  const handleSubmit = async () => {
+    setSubmitError(null);
+    if (signerName.trim().length < 2) {
+      setSubmitError("Please enter your name as it appears on your ID.");
+      return;
+    }
+    const blob = await padRef.current?.getBlob();
+    if (!blob || empty) {
+      setSubmitError("Please draw your signature above before submitting.");
+      return;
+    }
+    setSubmitting(true);
+    const fd = new FormData();
+    fd.append("signer_name", signerName.trim());
+    fd.append("signature", blob, "customer-signature.png");
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/sign/${token}/customer`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        let msg = `${res.status}`;
+        try {
+          msg = JSON.parse(txt).detail ?? msg;
+        } catch {
+          msg = txt.slice(0, 200);
+        }
+        throw new Error(msg);
+      }
+      const updated = (await res.json()) as PublicDoc;
+      setDoc(updated);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loadError) {
+    return (
+      <Layout>
+        <div className="mx-auto max-w-md py-24 text-center">
+          <h1 className="font-display text-3xl text-ink">Link unavailable</h1>
+          <p className="mt-3 text-ink-muted">{loadError}</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!doc) {
+    return (
+      <Layout>
+        <div className="mx-auto max-w-2xl py-16">
+          <div className="h-7 w-64 animate-pulse rounded bg-surface-sunken" />
+          <div className="mt-4 h-3 w-96 animate-pulse rounded bg-surface-sunken" />
+          <div className="mt-10 h-64 animate-pulse rounded bg-surface-sunken" />
+        </div>
+      </Layout>
+    );
+  }
+
+  // Already signed
+  if (doc.customer_signed_at) {
+    return (
+      <Layout>
+        <div className="mx-auto max-w-md py-24 text-center animate-rise-in">
+          <div className="mx-auto mb-7 flex h-14 w-14 items-center justify-center rounded-full border border-line">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M5 12.5l4.5 4.5L20 6.5" stroke="#0A0A0A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <p className="text-[12px] uppercase tracking-[0.18em] text-ink-subtle">Thank you</p>
+          <h1 className="mt-3 font-display text-4xl font-medium tracking-tightest text-ink">
+            Resolution confirmed.
+          </h1>
+          <p className="mt-4 text-[14.5px] leading-relaxed text-ink-muted">
+            Your signature for <strong>{doc.reference}</strong> was received on{" "}
+            <strong>{new Date(doc.customer_signed_at).toLocaleString()}</strong>. Our engineer will
+            counter-sign and close the ticket. A copy of the signed document will be retained for your records.
+          </p>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <section className="mx-auto max-w-3xl px-6 py-12">
+        <p className="text-[12px] uppercase tracking-[0.18em] text-ink-subtle">
+          Resolution acknowledgement
+        </p>
+        <h1 className="mt-3 font-display text-5xl font-medium leading-[1.1] tracking-tightest text-ink md:text-6xl">
+          Confirm your device is fixed.
+        </h1>
+        <p className="mt-4 max-w-xl text-[15.5px] leading-relaxed text-ink-muted">
+          Please review the resolution below. If everything looks right, sign to confirm.
+          Once you submit, our engineer will counter-sign and close the ticket.
+        </p>
+
+        <div className="mt-10 overflow-hidden rounded-xl2 border border-line bg-white shadow-soft">
+          <div className="border-b border-line bg-surface-raised px-6 py-3">
+            <p className="font-mono text-[12.5px] text-ink-subtle">{doc.reference}</p>
+            <p className="mt-0.5 font-display text-[18px] font-medium text-ink">
+              {doc.business_name}
+            </p>
+          </div>
+          <div className="divide-y divide-line/60">
+            <Section title="Product">
+              <Row k="Category" v={doc.product_category} />
+              <Row k="Serial number" v={<code className="font-mono text-[13px]">{doc.serial_number}</code>} />
+            </Section>
+
+            <Section title="Issue reported">
+              <Row k="Category" v={doc.issue_category} />
+              {doc.description && (
+                <div className="px-4 py-2.5">
+                  <p className="text-[12px] uppercase tracking-[0.10em] text-ink-subtle">Original description</p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-[14px] leading-relaxed text-ink">
+                    {doc.description}
+                  </p>
+                </div>
+              )}
+            </Section>
+
+            <Section title="Resolution by ArcksCare">
+              {doc.engineer_name && <Row k="Engineer" v={doc.engineer_name} />}
+              {doc.resolved_at && (
+                <Row k="Resolved on" v={new Date(doc.resolved_at).toLocaleString()} />
+              )}
+              <div className="px-4 py-2.5">
+                <p className="text-[12px] uppercase tracking-[0.10em] text-ink-subtle">Summary</p>
+                <p className="mt-1.5 whitespace-pre-wrap text-[14px] leading-relaxed text-ink">
+                  {doc.resolution_summary || "—"}
+                </p>
+              </div>
+            </Section>
+          </div>
+        </div>
+
+        <div className="mt-12 space-y-6">
+          <h2 className="font-display text-2xl font-medium tracking-tight text-ink">
+            Your signature
+          </h2>
+
+          <FieldGroup>
+            <Label htmlFor="signer_name" required>Your name</Label>
+            <Input
+              id="signer_name"
+              value={signerName}
+              onChange={(e) => setSignerName(e.target.value)}
+              placeholder="Full name"
+            />
+          </FieldGroup>
+
+          <SignaturePad ref={padRef} onChangeIsEmpty={setEmpty} />
+
+          <AnimatePresence>
+            {submitError && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="rounded-xl2 border border-accent-danger/30 bg-white p-3.5 text-[13px] text-accent-danger"
+              >
+                {submitError}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              disabled={empty || signerName.trim().length < 2}
+              loading={submitting}
+              onClick={handleSubmit}
+            >
+              Submit signature
+            </Button>
+          </div>
+
+          <p className="text-[12px] text-ink-subtle">
+            By submitting, you acknowledge the resolution above and that your device is working as expected.
+          </p>
+        </div>
+      </section>
+    </Layout>
+  );
+}
+
+function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen bg-white">
+      <header className="border-b border-line">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="h-7 w-7 rounded-md bg-ink" />
+            <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
+              ArcksCare
+            </span>
+          </Link>
+        </div>
+      </header>
+      {children}
+    </main>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="px-2 py-2">
+      <p className="px-4 pb-1 pt-3 text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+        {title}
+      </p>
+      <div className="divide-y divide-line/60">{children}</div>
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] items-baseline gap-3 px-4 py-2.5">
+      <span className="text-[12.5px] text-ink-subtle">{k}</span>
+      <span className="text-[14px] text-ink">{v}</span>
+    </div>
+  );
+}

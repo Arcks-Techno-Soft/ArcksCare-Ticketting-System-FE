@@ -7,13 +7,15 @@ export const metadata = {
   title: "Ticket submitted — ArcksCare",
 };
 
-export default function SuccessPage({
+// Next.js 15+ made `searchParams` a Promise. Await it before accessing values.
+export default async function SuccessPage({
   searchParams,
 }: {
-  searchParams: SearchParams;
+  searchParams: Promise<SearchParams>;
 }) {
-  const ref = (searchParams.ref || "").trim();
-  const email = (searchParams.email || "").trim();
+  const sp = await searchParams;
+  const ref = (sp.ref || "").trim();
+  const email = (sp.email || "").trim();
 
   return (
     <main className="min-h-screen bg-white">

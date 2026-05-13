@@ -18,12 +18,20 @@ export default function RaiseTicketPage() {
               ArcksCare
             </span>
           </Link>
-          <Link
-            href="/"
-            className="text-[13px] text-ink-muted hover:text-ink transition-colors"
-          >
-            ← Back home
-          </Link>
+          <div className="flex items-center gap-5">
+            <Link
+              href="/admin/login"
+              className="text-[13px] text-ink-muted hover:text-ink transition-colors"
+            >
+              Admin login
+            </Link>
+            <Link
+              href="/"
+              className="text-[13px] text-ink-muted hover:text-ink transition-colors"
+            >
+              ← Back home
+            </Link>
+          </div>
         </div>
       </header>
 

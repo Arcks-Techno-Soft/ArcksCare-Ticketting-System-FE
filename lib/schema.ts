@@ -3,7 +3,6 @@ import {
   BUSINESS_TYPES,
   ISSUE_CATEGORIES,
   PRODUCT_CATEGORIES,
-  SEVERITIES,
 } from "./options";
 
 // Mirrors backend/app/schemas/ticket.py:TicketCreate
@@ -46,7 +45,8 @@ export const ticketSchema = z.object({
   issue_category: z.enum(ISSUE_CATEGORIES, {
     errorMap: () => ({ message: "Select an issue category" }),
   }),
-  severity: z.enum(SEVERITIES).default("MEDIUM"),
+  // NOTE: severity is intentionally not collected from the customer. The
+  // backend defaults it to MEDIUM; Owner/Manager triage and adjust later.
   description: z
     .string()
     .trim()

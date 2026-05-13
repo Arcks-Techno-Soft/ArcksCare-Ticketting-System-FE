@@ -15,13 +15,6 @@ type Props = {
   attachments?: File[];
 };
 
-const SEVERITY_DOT: Record<string, string> = {
-  LOW: "bg-accent-success",
-  MEDIUM: "bg-accent-warn",
-  HIGH: "bg-orange-500",
-  CRITICAL: "bg-accent-danger",
-};
-
 export function TicketSummary({ values, attachments = [] }: Props) {
   const filledAny =
     Object.values(values).some(
@@ -59,11 +52,7 @@ export function TicketSummary({ values, attachments = [] }: Props) {
               </div>
             </div>
           </div>
-          {values.severity ? (
-            <SeverityBadge severity={values.severity} />
-          ) : (
-            <span className="text-[12px] text-ink-subtle">Severity not set</span>
-          )}
+          <span className="text-[11px] text-ink-subtle">Severity will be set by support</span>
         </div>
 
         {/* Body */}
@@ -111,7 +100,7 @@ export function TicketSummary({ values, attachments = [] }: Props) {
 
           <Block title="Issue">
             <Row label="Category" value={values.issue_category} />
-            <Row label="Severity" value={values.severity} />
+            <Row label="Severity" value={<span className="text-ink-subtle italic">to be set by support</span>} />
             <Row
               label="Preferred time"
               value={values.preferred_contact_time}
@@ -210,14 +199,4 @@ function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function SeverityBadge({ severity }: { severity: string }) {
-  const dot = SEVERITY_DOT[severity] ?? "bg-ink";
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-1 text-[12px] font-medium text-ink">
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-      {severity}
-    </span>
-  );
 }

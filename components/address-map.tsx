@@ -1,17 +1,17 @@
 "use client";
 
 /**
- * AddressMap - interactive Leaflet map with location search and pin drop.
+ * AddressMap - read-only Leaflet map with two opt-in ways for the customer
+ * to pick a location:
+ *   1. Search box (Nominatim autocomplete, India-scoped)
+ *   2. "Use my current location" button (browser geolocation + reverse geocode)
  *
- *  - Free: uses OpenStreetMap tiles + Nominatim forward/reverse geocoding
- *  - When the user clicks the map or picks a search result, the marker moves
- *    and `onLocationChange` fires with lat/lng + a parsed address payload
- *    that the parent form uses to autofill its address fields.
- *  - Nominatim usage policy: <=1 req/sec, identifying User-Agent. We debounce
- *    the search input and identify ourselves with an Accept-Language header.
+ * The map itself is non-interactive on purpose — the customer can't tap or
+ * drag the marker because in real use we saw mis-taps change the address. To
+ * adjust the pin they re-search or re-locate.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { useEffect, useRef, useState } from "react";
+import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -60,6 +60,8 @@ export default function AddressMap({ initial, onLocationChange }: Props) {
   const [results, setResults] = useState<NominatimSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- Forward search (debounced) -------------------------------------
@@ -100,11 +102,40 @@ export default function AddressMap({ initial, onLocationChange }: Props) {
     onLocationChange({ lat, lng, address, display_name: display });
   };
 
+  // ---- Use my current location ----------------------------------------
+  const handleUseCurrentLocation = () => {
+    setLocateError(null);
+    if (!("geolocation" in navigator)) {
+      setLocateError("Your browser doesn't support location services.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        await handlePick(pos.coords.latitude, pos.coords.longitude);
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        // Common: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+        if (err.code === 1) {
+          setLocateError("Location permission denied. You can search a place instead.");
+        } else if (err.code === 3) {
+          setLocateError("Couldn't get your location in time. Try searching instead.");
+        } else {
+          setLocateError("Couldn't determine your location. Try searching instead.");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 }
+    );
+  };
+
   return (
     <div className="space-y-3">
-      {/* Search input -------------------------------------------------- */}
-      <div className="relative">
-        <div className="relative">
+      {/* Search input + use-my-location button ----------------------- */}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        {/* Search input with results dropdown positioned beneath it */}
+        <div className="relative flex-1">
           <svg
             className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle"
             width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden
@@ -124,75 +155,107 @@ export default function AddressMap({ initial, onLocationChange }: Props) {
           {searching && (
             <div className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin rounded-full border-2 border-ink/15 border-t-ink" />
           )}
+
+          {open && results.length > 0 && (
+            <ul
+              className="absolute z-[1000] mt-1.5 w-full overflow-hidden rounded-xl2 border border-line bg-white shadow-lift"
+              role="listbox"
+            >
+              {results.slice(0, 6).map((r) => (
+                <li key={r.place_id}>
+                  <button
+                    type="button"
+                    className="block w-full px-4 py-3 text-left text-[13.5px] text-ink hover:bg-surface-raised"
+                    onClick={() => {
+                      setQuery(r.display_name.split(",").slice(0, 2).join(", "));
+                      setOpen(false);
+                      handlePick(
+                        parseFloat(r.lat),
+                        parseFloat(r.lon),
+                        r.display_name,
+                        parseNominatimAddress(r as NominatimReverseResult)
+                      );
+                    }}
+                  >
+                    <span className="block text-ink">
+                      {r.display_name.split(",").slice(0, 2).join(", ")}
+                    </span>
+                    <span className="mt-0.5 block text-[12px] text-ink-subtle">
+                      {r.display_name.split(",").slice(2).join(",").trim()}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        {open && results.length > 0 && (
-          <ul
-            className="absolute z-[1000] mt-1.5 w-full overflow-hidden rounded-xl2 border border-line bg-white shadow-lift"
-            role="listbox"
-          >
-            {results.slice(0, 6).map((r) => (
-              <li key={r.place_id}>
-                <button
-                  type="button"
-                  className="block w-full px-4 py-3 text-left text-[13.5px] text-ink hover:bg-surface-raised"
-                  onClick={() => {
-                    setQuery(r.display_name.split(",").slice(0, 2).join(", "));
-                    setOpen(false);
-                    handlePick(
-                      parseFloat(r.lat),
-                      parseFloat(r.lon),
-                      r.display_name,
-                      parseNominatimAddress(r as NominatimReverseResult)
-                    );
-                  }}
-                >
-                  <span className="block text-ink">
-                    {r.display_name.split(",").slice(0, 2).join(", ")}
-                  </span>
-                  <span className="mt-0.5 block text-[12px] text-ink-subtle">
-                    {r.display_name.split(",").slice(2).join(",").trim()}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <button
+          type="button"
+          onClick={handleUseCurrentLocation}
+          disabled={locating}
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl2 border border-line
+                     bg-white px-4 py-3 text-[13px] text-ink transition-colors
+                     hover:border-ink hover:bg-surface-raised disabled:opacity-50"
+        >
+          {locating ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink/20 border-t-ink" />
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          )}
+          {locating ? "Locating…" : "Use my current location"}
+        </button>
       </div>
 
-      {/* Map ----------------------------------------------------------- */}
-      <div className="overflow-hidden rounded-xl2 border border-line shadow-soft">
+      {locateError && (
+        <p className="-mt-1 text-[12px] text-accent-danger">{locateError}</p>
+      )}
+
+      {/* Map (read-only preview, no click/drag) ------------------------- */}
+      <div className="relative overflow-hidden rounded-xl2 border border-line shadow-soft">
         <MapContainer
           center={[position?.lat ?? DEFAULT_CENTER.lat, position?.lng ?? DEFAULT_CENTER.lng]}
           zoom={position ? 15 : 5}
-          scrollWheelZoom
+          // Disable every form of interaction so accidental taps can't change the address.
+          dragging={false}
+          touchZoom={false}
+          doubleClickZoom={false}
+          scrollWheelZoom={false}
+          boxZoom={false}
+          keyboard={false}
+          zoomControl={false}
+          tap={false}
           style={{ height: 280, width: "100%" }}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <ClickToPlace onPick={(lat, lng) => handlePick(lat, lng)} />
           <Recenter position={position} />
           {position && (
             <Marker
-              draggable
               icon={markerIcon}
               position={[position.lat, position.lng]}
-              eventHandlers={{
-                dragend: (e) => {
-                  const ll = e.target.getLatLng();
-                  handlePick(ll.lat, ll.lng);
-                },
-              }}
+              interactive={false}
             />
           )}
         </MapContainer>
+
+        {!position && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-[1px]">
+            <p className="rounded-md bg-white/90 px-3 py-1.5 text-[12.5px] text-ink-muted shadow-soft">
+              Search a place or tap “Use my current location” to drop the pin.
+            </p>
+          </div>
+        )}
       </div>
 
       <p className="text-[12px] leading-relaxed text-ink-subtle">
-        Click anywhere on the map to drop a pin, or drag the existing pin to fine-tune the location.
-        We&apos;ll auto-fill the address fields above when you do.
+        The pin updates only when you search a place or use your current location.
+        We&apos;ll auto-fill the address fields above each time.
       </p>
     </div>
   );
@@ -200,14 +263,8 @@ export default function AddressMap({ initial, onLocationChange }: Props) {
 
 /* ----------------------- Map helper components -------------------------- */
 
-function ClickToPlace({ onPick }: { onPick: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onPick(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  return null;
-}
+// Note: a previous version supported click-to-drop-pin via useMapEvents. We
+// removed it intentionally so accidental taps can't change a customer's address.
 
 function Recenter({ position }: { position: { lat: number; lng: number } | null }) {
   const map = useMap();

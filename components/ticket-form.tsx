@@ -15,7 +15,6 @@ import {
   ISSUE_CATEGORIES,
   PREFERRED_CONTACT_TIMES,
   PRODUCT_CATEGORIES,
-  SEVERITIES,
 } from "@/lib/options";
 
 import { Button } from "@/components/ui/Button";
@@ -56,7 +55,6 @@ export function TicketForm() {
   } = useForm<TicketFormValues>({
     resolver: zodResolver(ticketSchema),
     mode: "onBlur",
-    defaultValues: { severity: "MEDIUM" },
   });
 
   // Watch every field so the summary updates live as the customer types.
@@ -312,7 +310,7 @@ export function TicketForm() {
         caption="The more detail, the faster we can help."
       >
         <Grid>
-          <FieldGroup>
+          <FieldGroup className="md:col-span-2">
             <Label htmlFor="issue_category" required>Issue category</Label>
             <Select
               id="issue_category"
@@ -321,17 +319,6 @@ export function TicketForm() {
               {...register("issue_category")}
             />
             <FieldError message={errors.issue_category?.message} />
-          </FieldGroup>
-
-          <FieldGroup>
-            <Label htmlFor="severity" required>Severity</Label>
-            <Select
-              id="severity"
-              options={SEVERITIES}
-              placeholder="Select severity"
-              {...register("severity")}
-            />
-            <FieldError message={errors.severity?.message} />
           </FieldGroup>
 
           <FieldGroup className="md:col-span-2">
