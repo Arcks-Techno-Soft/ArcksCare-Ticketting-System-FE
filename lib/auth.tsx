@@ -3,10 +3,18 @@
 /**
  * Auth context for the /admin app.
  *
- * Stores the JWT in localStorage (good enough for a small internal admin;
- * if we later need stricter security we can move to httpOnly cookies).
- * Wraps the app in <AuthProvider> at /admin/layout.tsx so child pages can
- * call useAuth() to read user / log out.
+ * Stores the JWT in sessionStorage so each browser tab has its own session.
+ * This lets operators sign in as different roles in different tabs (e.g.
+ * owner in one, manager in another) without one tab's login overwriting the
+ * other's via shared localStorage.
+ *
+ * Tradeoff: closing the tab clears the session. For an internal admin tool
+ * that's a reasonable default — the JWT also expires server-side, so users
+ * already had to log in periodically.
+ *
+ * A legacy localStorage entry (from the previous build) is migrated into
+ * the current tab's sessionStorage on first hydrate, then deleted, so
+ * already-signed-in users aren't kicked out by this change.
  */
 import {
   createContext,
@@ -18,7 +26,7 @@ import {
 } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const STORAGE_KEY = "arckscare.auth";
+const STORAGE_KEY = "sk-pos-care.auth";
 
 export type AuthUser = {
   id: number;
@@ -57,17 +65,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<StoredAuth | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Hydrate from localStorage on first mount
+  // Hydrate from sessionStorage on first mount. If a legacy localStorage
+  // entry exists (older build used localStorage), pull it into this tab's
+  // sessionStorage and clear it — so this change doesn't sign anyone out
+  // and existing tabs migrate cleanly on first refresh.
   useEffect(() => {
+    if (typeof window === "undefined") {
+      setReady(true);
+      return;
+    }
     try {
-      const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+      let raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        const legacy = localStorage.getItem(STORAGE_KEY);
+        if (legacy) {
+          sessionStorage.setItem(STORAGE_KEY, legacy);
+          localStorage.removeItem(STORAGE_KEY);
+          raw = legacy;
+        }
+      }
       if (raw) {
         const parsed = JSON.parse(raw) as StoredAuth;
-        // Drop expired tokens
         if (new Date(parsed.expires_at).getTime() > Date.now()) {
           setAuth(parsed);
         } else {
-          localStorage.removeItem(STORAGE_KEY);
+          sessionStorage.removeItem(STORAGE_KEY);
         }
       }
     } catch {
@@ -79,8 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const persist = (next: StoredAuth | null) => {
     setAuth(next);
     if (typeof window === "undefined") return;
-    if (next) localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    else localStorage.removeItem(STORAGE_KEY);
+    if (next) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    else sessionStorage.removeItem(STORAGE_KEY);
   };
 
   const login = useCallback(

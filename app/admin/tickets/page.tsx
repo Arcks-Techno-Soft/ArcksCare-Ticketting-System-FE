@@ -5,20 +5,17 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
 import { useAuth, API_BASE_URL } from "@/lib/auth";
-import { AdminNav } from "@/components/admin/admin-nav";
+import { AdminShell } from "@/components/admin/admin-shell";
 import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
 import { Input, Select } from "@/components/ui/Field";
+import { fmtIst, fmtIstTime, fmtIstDate } from "@/lib/format-date";
 
 type AdminTicket = {
   id: number;
   reference: string;
   business_name: string;
-  contact_name: string;
-  phone: string;
-  email: string;
   city: string;
   state: string;
-  pincode: string;
   product_category: string;
   serial_number: string;
   issue_category: string;
@@ -26,18 +23,37 @@ type AdminTicket = {
   status: string;
   warranty_status: string;
   created_at: string;
-  attachments: { id: number; filename: string }[];
 };
 
 const STATUSES = ["OPEN", "ACKNOWLEDGED", "ASSIGNED", "ACCEPTED", "RESOLVING", "RESOLVED", "CLOSED"] as const;
 const SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+const DATE_RANGES: { label: string; days: number | null }[] = [
+  { label: "Any time", days: null },
+  { label: "Today", days: 1 },
+  { label: "Last 7 days", days: 7 },
+  { label: "Last 30 days", days: 30 },
+  { label: "Last 90 days", days: 90 },
+  { label: "Last 365 days", days: 365 },
+];
 const REFRESH_INTERVAL_MS = 30_000;
+const PAGE_SIZES = [25, 50, 100] as const;
+type PageSize = (typeof PAGE_SIZES)[number];
+
+type TicketListResponse = {
+  items: AdminTicket[];
+  total: number;
+  limit: number;
+  offset: number;
+};
 
 export default function AdminTicketsPage() {
   const router = useRouter();
   const { ready, user, authFetch } = useAuth();
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  // First-load skeleton is distinct from background refetch — never flicker
+  // skeletons over existing rows when filters change or auto-refresh fires.
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
 
@@ -45,6 +61,24 @@ export default function AdminTicketsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [createdWithinDays, setCreatedWithinDays] = useState<number | null>(null);
+
+  // Pagination
+  const [pageSize, setPageSize] = useState<PageSize>(50);
+  const [page, setPage] = useState(0);
+
+  // Debounce the search input so typing doesn't fire a fetch per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset to page 0 whenever the filter set changes, otherwise we might be
+  // sitting on a page that no longer exists.
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter, severityFilter, debouncedSearch, createdWithinDays, pageSize]);
 
   // Gate: redirect to login if not authed
   useEffect(() => {
@@ -55,8 +89,10 @@ export default function AdminTicketsPage() {
     const qs = new URLSearchParams();
     if (statusFilter) qs.set("status", statusFilter);
     if (severityFilter) qs.set("severity", severityFilter);
-    if (search.trim()) qs.set("search", search.trim());
-    qs.set("limit", "100");
+    if (debouncedSearch.trim()) qs.set("search", debouncedSearch.trim());
+    if (createdWithinDays) qs.set("created_within_days", String(createdWithinDays));
+    qs.set("limit", String(pageSize));
+    qs.set("offset", String(page * pageSize));
 
     try {
       const res = await authFetch(`${API_BASE_URL}/api/v1/admin/tickets?${qs.toString()}`);
@@ -68,21 +104,22 @@ export default function AdminTicketsPage() {
         const text = await res.text();
         throw new Error(`Server ${res.status}: ${text.slice(0, 120)}`);
       }
-      const data = (await res.json()) as AdminTicket[];
-      setTickets(data);
+      const data = (await res.json()) as TicketListResponse;
+      setTickets(data.items);
+      setTotal(data.total);
       setError(null);
       setLastRefreshAt(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load tickets");
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
-  }, [authFetch, router, statusFilter, severityFilter, search]);
+  }, [authFetch, router, statusFilter, severityFilter, debouncedSearch, createdWithinDays, page, pageSize]);
 
-  // Initial load + refresh on filter change
+  // Refetch on filter or page change. Skeleton only shows during the FIRST
+  // load — subsequent fetches leave the current rows in place while loading.
   useEffect(() => {
     if (!user) return;
-    setLoading(true);
     fetchTickets();
   }, [user, fetchTickets]);
 
@@ -102,9 +139,7 @@ export default function AdminTicketsPage() {
   if (!ready || !user) return null;
 
   return (
-    <div className="min-h-screen bg-white">
-      <AdminNav />
-
+    <AdminShell>
       <section className="mx-auto max-w-7xl px-6 py-10">
         <div className="flex items-end justify-between gap-4 border-b border-line pb-6">
           <div>
@@ -115,10 +150,10 @@ export default function AdminTicketsPage() {
               {user.role === "ENGINEER" ? "Assigned to me" : "Inbox"}
             </h1>
             <p className="mt-1 text-[13.5px] text-ink-muted">
-              {tickets.length} ticket{tickets.length === 1 ? "" : "s"}
+              {total} ticket{total === 1 ? "" : "s"}
               {lastRefreshAt && (
                 <>
-                  {" "}· auto-refreshed at {lastRefreshAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  {" "}· auto-refreshed at {fmtIstTime(lastRefreshAt, { withSeconds: true })}
                 </>
               )}
             </p>
@@ -126,6 +161,17 @@ export default function AdminTicketsPage() {
 
           {/* Status pill counts */}
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setStatusFilter("")}
+              className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${
+                statusFilter === ""
+                  ? "border-ink bg-ink text-white"
+                  : "border-line bg-white text-ink hover:border-ink-soft"
+              }`}
+            >
+              All · {total}
+            </button>
             {STATUSES.map((s) => {
               const active = statusFilter === s;
               return (
@@ -147,7 +193,7 @@ export default function AdminTicketsPage() {
         </div>
 
         {/* Filters row */}
-        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-[1fr_200px_auto]">
+        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-[1fr_200px_200px_auto]">
           <Input
             placeholder="Search by reference, business name, or serial number…"
             value={search}
@@ -159,6 +205,29 @@ export default function AdminTicketsPage() {
             value={severityFilter}
             onChange={(e) => setSeverityFilter(e.target.value)}
           />
+          <div className="relative">
+            <select
+              value={createdWithinDays ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setCreatedWithinDays(v === "" ? null : Number(v));
+              }}
+              className="w-full appearance-none rounded-xl2 border border-line bg-white px-4 py-3.5 pr-10 text-[13.5px] text-ink hover:border-ink-soft focus:border-ink focus:outline-none transition-colors"
+              aria-label="Opened within"
+            >
+              {DATE_RANGES.map((r) => (
+                <option key={r.label} value={r.days ?? ""}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+            <svg
+              className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-subtle"
+              width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden
+            >
+              <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
           <button
             type="button"
             onClick={() => fetchTickets()}
@@ -184,7 +253,7 @@ export default function AdminTicketsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {loading && tickets.length === 0 ? (
+              {initialLoading && tickets.length === 0 ? (
                 <SkeletonRows />
               ) : tickets.length === 0 ? (
                 <tr>
@@ -222,7 +291,7 @@ export default function AdminTicketsPage() {
                     <Td><StatusBadge status={t.status} /></Td>
                     <Td><WarrantyBadge status={t.warranty_status} /></Td>
                     <Td>
-                      <span className="text-ink-muted" title={new Date(t.created_at).toLocaleString()}>
+                      <span className="text-ink-muted" title={fmtIst(t.created_at)}>
                         {timeAgo(t.created_at)}
                       </span>
                     </Td>
@@ -232,7 +301,80 @@ export default function AdminTicketsPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination footer */}
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => setPageSize(n)}
+        />
       </section>
+    </AdminShell>
+  );
+}
+
+/* -------------------------- Pagination ------------------------------- */
+
+function Pagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: PageSize;
+  total: number;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (n: PageSize) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : page * pageSize + 1;
+  const to = Math.min(total, (page + 1) * pageSize);
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[13px] text-ink-muted">
+      <div className="flex items-center gap-2">
+        <span>Rows per page</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value) as PageSize)}
+          className="rounded-md border border-line bg-white px-2 py-1 text-[12.5px] text-ink hover:border-ink-soft focus:border-ink focus:outline-none"
+        >
+          {PAGE_SIZES.map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span className="tabular-nums">
+          {from}–{to} of {total}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.max(0, page - 1))}
+            disabled={page === 0}
+            className="rounded-md border border-line bg-white px-3 py-1 text-[12.5px] text-ink hover:border-ink hover:bg-surface-raised disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-white transition-colors"
+          >
+            Previous
+          </button>
+          <span className="px-2 text-[12.5px] tabular-nums">
+            Page {page + 1} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
+            disabled={page >= totalPages - 1}
+            className="rounded-md border border-line bg-white px-3 py-1 text-[12.5px] text-ink hover:border-ink hover:bg-surface-raised disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-white transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -273,5 +415,5 @@ function timeAgo(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return fmtIstDate(iso);
 }

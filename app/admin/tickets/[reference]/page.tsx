@@ -6,15 +6,27 @@ import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { useAuth, API_BASE_URL } from "@/lib/auth";
-import { AdminNav } from "@/components/admin/admin-nav";
+import { AdminShell } from "@/components/admin/admin-shell";
 import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
 import { WorkNotes, type WorkNote } from "@/components/admin/work-notes";
+import {
+  SubEngineers,
+  type SubEngineer,
+  type SubEngineerSuggestion,
+} from "@/components/admin/sub-engineers";
+import {
+  Spares,
+  type ChargesSummary,
+  type SpareCatalogItem,
+} from "@/components/admin/spares";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { useRef } from "react";
 import { Label } from "@/components/ui/Field";
+import { ShipPartsDialog } from "@/components/admin/ship-parts-dialog";
+import { fmtIst, fmtIstDate } from "@/lib/format-date";
 
 /* ------------------------------ types ------------------------------------ */
 
@@ -63,6 +75,8 @@ type AdminTicket = {
     pdf_generated_at?: string | null;
     customer_sign_token: string;
   } | null;
+
+  sub_engineers?: SubEngineer[];
 };
 
 type TicketEvent = {
@@ -74,6 +88,24 @@ type TicketEvent = {
   note?: string | null;
   created_at: string;
   actor?: { id: number; username: string; name: string; role: string } | null;
+};
+
+type ShipmentItem = {
+  id: number;
+  catalog_id: number | null;
+  name: string;
+  quantity: number;
+};
+
+type Shipment = {
+  id: number;
+  courier_name: string;
+  tracking_id: string | null;
+  departed_at: string;
+  delivered_at?: string | null;
+  created_at: string;
+  created_by?: { id: number; name: string; role: string } | null;
+  items: ShipmentItem[];
 };
 
 const WARRANTY_OPTIONS = ["UNDER_WARRANTY", "OUT_OF_WARRANTY", "UNKNOWN"] as const;
@@ -103,6 +135,19 @@ export default function TicketDetailPage() {
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
   const [resolveSummary, setResolveSummary] = useState("");
   const [showResolveForm, setShowResolveForm] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
+  const [subSuggestions, setSubSuggestions] = useState<SubEngineerSuggestion[]>([]);
+  const [subSuggestionsLoading, setSubSuggestionsLoading] = useState(false);
+  const [charges, setCharges] = useState<ChargesSummary | null>(null);
+  const [spareCatalog, setSpareCatalog] = useState<SpareCatalogItem[]>([]);
+  const [spareError, setSpareError] = useState<string | null>(null);
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [shipDialogOpen, setShipDialogOpen] = useState(false);
+  // True only when the backend explicitly answered 404 for this reference.
+  // Distinct from "ticket is null because a transient fetch failed", which
+  // used to surface as a misleading "Ticket not found" screen.
+  const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Auth gate
   useEffect(() => {
@@ -112,28 +157,77 @@ export default function TicketDetailPage() {
   const fetchAll = useCallback(async () => {
     if (!reference) return;
     try {
-      const [t, e, eng, n] = await Promise.all([
+      const [t, e, eng, n, s, c, sh] = await Promise.all([
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/events`),
         authFetch(`${API_BASE_URL}/api/v1/admin/engineers`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/notes`),
+        authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/sub-engineer-suggestions`),
+        authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/charges`),
+        authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/shipments`),
       ]);
+      // 404 = ticket genuinely doesn't exist; show the "not found" screen.
       if (t.status === 404) {
+        setNotFound(true);
         setTicket(null);
+        setLoadError(null);
         setLoading(false);
         return;
       }
-      if (!t.ok || !e.ok || !eng.ok || !n.ok) throw new Error("Failed to load ticket");
+      if (!t.ok) {
+        // Any other status on the primary fetch is a real load error, not a
+        // missing ticket. Surface the server message so users can retry or
+        // ping ops, rather than misleading them with "Ticket not found".
+        const body = await t.text();
+        let msg = `Server ${t.status}`;
+        try {
+          const j = JSON.parse(body);
+          if (typeof j.detail === "string") msg = j.detail;
+        } catch {
+          if (body) msg += `: ${body.slice(0, 200)}`;
+        }
+        throw new Error(msg);
+      }
+      // Secondary fetches: log failures but still render what we have.
+      // (Old code conflated these with a missing ticket too.)
+      setNotFound(false);
+      setLoadError(null);
       setTicket(await t.json());
-      setEvents(await e.json());
-      setEngineers(await eng.json());
-      setNotes(await n.json());
+      setEvents(e.ok ? await e.json() : []);
+      setEngineers(eng.ok ? await eng.json() : []);
+      setNotes(n.ok ? await n.json() : []);
+      setSubSuggestions(s.ok ? ((await s.json()) as SubEngineerSuggestion[]) : []);
+      setCharges(c.ok ? ((await c.json()) as ChargesSummary) : null);
+      setShipments(sh.ok ? ((await sh.json()) as Shipment[]) : []);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Load failed");
+      setLoadError(err instanceof Error ? err.message : "Load failed");
     } finally {
       setLoading(false);
+      setSubSuggestionsLoading(false);
     }
   }, [reference, authFetch]);
+
+  // Load the spare-parts catalog for the ticket's product category. Re-runs
+  // only when the category changes — cheap and avoids repeat fetches on every
+  // refresh.
+  useEffect(() => {
+    const product = ticket?.product_category;
+    if (!product) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch(
+          `${API_BASE_URL}/api/v1/admin/spare-catalog?product=${encodeURIComponent(product)}`
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as SpareCatalogItem[];
+        if (!cancelled) setSpareCatalog(data);
+      } catch {
+        // Catalog is optional — silent failure is fine.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ticket?.product_category, authFetch]);
 
   useEffect(() => {
     if (!user) return;
@@ -185,6 +279,175 @@ export default function TicketDetailPage() {
     callAction("assign", "/assign", "POST", { engineer_id: selectedEngineerId });
     setSelectedEngineerId(null); // reset picker after successful submit
   };
+
+  const handleSelfAssign = () => callAction("self-assign", "/self-assign");
+
+  const handleAddSubEngineer = async (input: { name: string; phone: string; location: string }) => {
+    setSubError(null);
+    setActing("sub-add");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/sub-engineers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setSubError(e instanceof Error ? e.message : "Failed to add sub-engineer");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleRemoveSubEngineer = async (id: number) => {
+    setSubError(null);
+    setActing("sub-remove");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/sub-engineers/${id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok && res.status !== 204) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setSubError(e instanceof Error ? e.message : "Failed to remove sub-engineer");
+    } finally {
+      setActing(null);
+    }
+  };
+  const refreshCharges = useCallback(async () => {
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/charges`
+      );
+      if (res.ok) setCharges((await res.json()) as ChargesSummary);
+    } catch {
+      // ignore — next full refresh will recover
+    }
+  }, [authFetch, reference]);
+
+  const handleSpareAdd = async (input: {
+    catalog_id?: number;
+    name?: string;
+    unit_price_inr?: number;
+    quantity: number;
+  }) => {
+    setSpareError(null);
+    setActing("spare-add");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/spares`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await refreshCharges();
+    } catch (e) {
+      setSpareError(e instanceof Error ? e.message : "Failed to add spare");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleSpareUpdate = async (
+    id: number,
+    input: { unit_price_inr?: number; quantity?: number }
+  ) => {
+    setSpareError(null);
+    setActing("spare-update");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/spares/${id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await refreshCharges();
+    } catch (e) {
+      setSpareError(e instanceof Error ? e.message : "Failed to update spare");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleSpareRemove = async (id: number) => {
+    setSpareError(null);
+    setActing("spare-remove");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/spares/${id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok && res.status !== 204) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await refreshCharges();
+    } catch (e) {
+      setSpareError(e instanceof Error ? e.message : "Failed to remove spare");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleServiceFee = async (amount: number) => {
+    setSpareError(null);
+    setActing("service-fee");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/service-fee`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ service_fee_inr: amount }),
+        }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      setCharges((await res.json()) as ChargesSummary);
+    } catch (e) {
+      setSpareError(e instanceof Error ? e.message : "Failed to update service fee");
+    } finally {
+      setActing(null);
+    }
+  };
+
   const handleWarranty = (next: string) =>
     callAction(`warranty-${next}`, "/warranty", "PATCH", { warranty_status: next });
 
@@ -223,6 +486,96 @@ export default function TicketDetailPage() {
       window.open(data.url, "_blank", "noopener,noreferrer");
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "PDF download failed");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleRegenPdf = async () => {
+    // Re-render the PDF in place after a template change. The file on storage
+    // is a snapshot from close-time and won't reflect layout updates until we
+    // explicitly re-render — that's what this endpoint does.
+    setActionError(null);
+    setActing("pdf-regen");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/pdf/regenerate`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const txt = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(txt).detail ?? msg; } catch { msg = txt.slice(0, 200); }
+        throw new Error(msg);
+      }
+      const data = (await res.json()) as { url: string };
+      // Open the freshly-rendered file so the user immediately sees the new
+      // layout. Cache-bust query in case the browser tab already had the
+      // previous render open.
+      window.open(`${data.url}#t=${Date.now()}`, "_blank", "noopener,noreferrer");
+      await fetchAll();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "PDF regenerate failed");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleShipParts = async (input: {
+    courier_name: string;
+    tracking_id: string | null;
+    departed_at: string;
+    items: { catalog_id: number | null; name: string; quantity: number }[];
+  }): Promise<string | null> => {
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/shipments`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try {
+          const j = JSON.parse(t);
+          msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+        } catch {
+          msg = t.slice(0, 200);
+        }
+        return msg;
+      }
+      await fetchAll();
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : "Failed to record shipment";
+    }
+  };
+
+  const handleMarkDelivered = async (shipmentId: number) => {
+    setActionError(null);
+    setActing(`deliver-${shipmentId}`);
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/shipments/${shipmentId}/deliver`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try {
+          const j = JSON.parse(t);
+          msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+        } catch {
+          msg = t.slice(0, 200);
+        }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to mark delivered");
     } finally {
       setActing(null);
     }
@@ -277,17 +630,16 @@ export default function TicketDetailPage() {
     }
   };
 
-  const handleAddNote = async (body: string) => {
+  const handleAddNote = async (body: string, images: File[]) => {
     setActionError(null);
     setActing("note");
     try {
+      const fd = new FormData();
+      fd.append("body", body);
+      for (const f of images) fd.append("images", f, f.name);
       const res = await authFetch(
         `${API_BASE_URL}/api/v1/admin/tickets/${reference}/notes`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body }),
-        }
+        { method: "POST", body: fd }
       );
       if (!res.ok) {
         const t = await res.text();
@@ -313,28 +665,57 @@ export default function TicketDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
-        <AdminNav />
+      <AdminShell>
         <div className="mx-auto max-w-7xl px-6 py-16">
           <div className="h-8 w-64 animate-pulse rounded bg-surface-sunken" />
           <div className="mt-6 h-4 w-96 animate-pulse rounded bg-surface-sunken" />
         </div>
-      </div>
+      </AdminShell>
     );
   }
 
   if (!ticket) {
+    // Distinguish a real 404 from a transient load failure — they used to
+    // look identical and that misled users into thinking shipments / new
+    // features had broken something. Only show "not found" when the server
+    // actually said 404; otherwise surface the real error + retry option.
+    if (notFound) {
+      return (
+        <AdminShell>
+          <div className="mx-auto max-w-7xl px-6 py-16 text-center">
+            <h1 className="font-display text-3xl text-ink">Ticket not found</h1>
+            <p className="mt-2 text-ink-muted">No ticket with reference <code>{reference}</code>.</p>
+            <Link href="/admin/tickets" className="mt-6 inline-block text-ink underline-offset-2 hover:underline">
+              ← Back to tickets
+            </Link>
+          </div>
+        </AdminShell>
+      );
+    }
     return (
-      <div className="min-h-screen bg-white">
-        <AdminNav />
+      <AdminShell>
         <div className="mx-auto max-w-7xl px-6 py-16 text-center">
-          <h1 className="font-display text-3xl text-ink">Ticket not found</h1>
-          <p className="mt-2 text-ink-muted">No ticket with reference <code>{reference}</code>.</p>
-          <Link href="/admin/tickets" className="mt-6 inline-block text-ink underline-offset-2 hover:underline">
-            ← Back to tickets
-          </Link>
+          <h1 className="font-display text-3xl text-ink">Couldn&apos;t load ticket</h1>
+          <p className="mt-2 text-ink-muted">
+            {loadError ?? "Something went wrong while fetching this ticket."}
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                fetchAll();
+              }}
+              className="rounded-md border border-line bg-white px-4 py-2 text-[13px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
+            >
+              Retry
+            </button>
+            <Link href="/admin/tickets" className="text-[13px] text-ink underline-offset-2 hover:underline">
+              ← Back to tickets
+            </Link>
+          </div>
         </div>
-      </div>
+      </AdminShell>
     );
   }
 
@@ -342,9 +723,7 @@ export default function TicketDetailPage() {
   const isOwner = user.role === "OWNER";
 
   return (
-    <div className="min-h-screen bg-white">
-      <AdminNav />
-
+    <AdminShell>
       <section className="mx-auto max-w-7xl px-6 py-10">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-4">
@@ -476,6 +855,7 @@ export default function TicketDetailPage() {
               setShowResolveForm={setShowResolveForm}
               onAcknowledge={handleAcknowledge}
               onAssign={handleAssign}
+              onSelfAssign={handleSelfAssign}
               onWarranty={handleWarranty}
               onSeverity={handleSeverity}
               onAccept={handleAccept}
@@ -484,21 +864,187 @@ export default function TicketDetailPage() {
               onEngineerSign={handleEngineerSign}
               onCustomerSign={handleCustomerSign}
               onDownloadPdf={handleDownloadPdf}
+              onRegenPdf={handleRegenPdf}
+            />
+            <ShipmentsCard
+              shipments={shipments}
+              canShip={
+                ticket.status !== "CLOSED" &&
+                (user.role === "OWNER" ||
+                  user.role === "MANAGER" ||
+                  ticket.assigned_engineer?.id === user.id)
+              }
+              acting={acting}
+              onOpenDialog={() => setShipDialogOpen(true)}
+              onMarkDelivered={handleMarkDelivered}
             />
             <WorkNotes
               notes={notes}
               canAdd={
-                user.role === "ENGINEER" &&
                 ticket.assigned_engineer?.id === user.id &&
                 ticket.status === "RESOLVING"
               }
               adding={acting === "note"}
               onSubmit={handleAddNote}
             />
+            <Spares
+              charges={charges}
+              catalog={spareCatalog}
+              canManage={
+                // Invoice freezes at RESOLVED — no edits by anyone after that,
+                // since the figures travel into the signed resolution PDF.
+                ticket.status === "RESOLVING" &&
+                (user.role === "OWNER" ||
+                  user.role === "MANAGER" ||
+                  ticket.assigned_engineer?.id === user.id)
+              }
+              busy={
+                acting === "spare-add" ||
+                acting === "spare-update" ||
+                acting === "spare-remove" ||
+                acting === "service-fee"
+              }
+              error={spareError}
+              onAdd={handleSpareAdd}
+              onUpdate={handleSpareUpdate}
+              onRemove={handleSpareRemove}
+              onServiceFee={handleServiceFee}
+            />
+            <SubEngineers
+              items={ticket.sub_engineers ?? []}
+              canManage={
+                (user.role === "OWNER" || user.role === "MANAGER" || ticket.assigned_engineer?.id === user.id) &&
+                ticket.status !== "OPEN"
+              }
+              defaultLocation={ticket.city}
+              busy={acting === "sub-add" || acting === "sub-remove"}
+              suggestions={subSuggestions}
+              suggestionsLoading={subSuggestionsLoading}
+              onAdd={handleAddSubEngineer}
+              onRemove={handleRemoveSubEngineer}
+              error={subError}
+            />
             <Timeline events={events} />
           </aside>
         </div>
       </section>
+
+      <ShipPartsDialog
+        open={shipDialogOpen}
+        onClose={() => setShipDialogOpen(false)}
+        catalog={spareCatalog}
+        onSubmit={handleShipParts}
+      />
+    </AdminShell>
+  );
+}
+
+function ShipmentsCard({
+  shipments,
+  canShip,
+  acting,
+  onOpenDialog,
+  onMarkDelivered,
+}: {
+  shipments: Shipment[];
+  canShip: boolean;
+  acting: string | null;
+  onOpenDialog: () => void;
+  onMarkDelivered: (shipmentId: number) => void;
+}) {
+  if (shipments.length === 0 && !canShip) return null;
+  return (
+    <div className="rounded-xl2 border border-line bg-white shadow-soft">
+      <div className="flex items-center justify-between border-b border-line bg-surface-raised px-5 py-3">
+        <span className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+          Spare parts shipped
+        </span>
+        {canShip && (
+          <button
+            type="button"
+            onClick={onOpenDialog}
+            className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white px-2.5 py-1 text-[12px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M2 5l6-3 6 3v6l-6 3-6-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+              <path d="M2 5l6 3 6-3M8 8v6" stroke="currentColor" strokeWidth="1.4" />
+            </svg>
+            Ship parts
+          </button>
+        )}
+      </div>
+      <ol className="divide-y divide-line/60">
+        {shipments.length === 0 ? (
+          <li className="px-5 py-4 text-[13px] text-ink-subtle">
+            No shipments logged yet.
+          </li>
+        ) : (
+          shipments.map((s) => {
+            const delivered = !!s.delivered_at;
+            return (
+              <li key={s.id} className="px-5 py-3.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-[14px] font-medium text-ink">{s.courier_name}</div>
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.08em] ${
+                        delivered
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : "border-amber-200 bg-amber-50 text-amber-800"
+                      }`}
+                    >
+                      {delivered ? "Delivered" : "In transit"}
+                    </span>
+                  </div>
+                  <div className="text-[11.5px] text-ink-subtle">
+                    Departed {fmtIstDate(s.departed_at)}
+                  </div>
+                </div>
+                {s.tracking_id && (
+                  <div className="mt-1 font-mono text-[12.5px] text-ink-muted">
+                    Tracking: {s.tracking_id}
+                  </div>
+                )}
+                {s.items.length > 0 && (
+                  <ul className="mt-2 space-y-0.5 text-[13px] text-ink">
+                    {s.items.map((it) => (
+                      <li key={it.id} className="flex items-center justify-between gap-2">
+                        <span>{it.name}</span>
+                        <span className="text-ink-subtle">× {it.quantity}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[11.5px] text-ink-subtle">
+                    {delivered && s.delivered_at ? (
+                      <>
+                        Delivered {fmtIst(s.delivered_at)}
+                        {s.created_by && <> · Shipped by {s.created_by.name}</>}
+                      </>
+                    ) : (
+                      s.created_by && <>Logged by {s.created_by.name}</>
+                    )}
+                  </div>
+                  {canShip && !delivered && (
+                    <button
+                      type="button"
+                      onClick={() => onMarkDelivered(s.id)}
+                      disabled={acting === `deliver-${s.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white px-2.5 py-1 text-[12px] text-ink hover:border-ink hover:bg-surface-raised transition-colors disabled:opacity-50"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+                        <path d="M3 8l3 3 7-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      {acting === `deliver-${s.id}` ? "Marking…" : "Mark delivered"}
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })
+        )}
+      </ol>
     </div>
   );
 }
@@ -542,6 +1088,7 @@ function ActionPanel(props: {
   setShowResolveForm: (b: boolean) => void;
   onAcknowledge: () => void;
   onAssign: () => void;
+  onSelfAssign: () => void;
   onWarranty: (next: string) => void;
   onSeverity: (next: string) => void;
   onAccept: () => void;
@@ -550,13 +1097,14 @@ function ActionPanel(props: {
   onEngineerSign: (blob: Blob) => Promise<void> | void;
   onCustomerSign: (blob: Blob, signerName: string) => Promise<void> | void;
   onDownloadPdf: () => void | Promise<void>;
+  onRegenPdf: () => void | Promise<void>;
 }) {
   const {
     ticket, engineers, currentUserId, currentUserRole, canModerate, isOwner,
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
-    onAcknowledge, onAssign, onWarranty, onSeverity,
-    onAccept, onStartWork, onResolve, onEngineerSign, onCustomerSign, onDownloadPdf,
+    onAcknowledge, onAssign, onSelfAssign, onWarranty, onSeverity,
+    onAccept, onStartWork, onResolve, onEngineerSign, onCustomerSign, onDownloadPdf, onRegenPdf,
   } = props;
   const signPadRef = useRef<SignaturePadHandle>(null);
   const [signEmpty, setSignEmpty] = useState(true);
@@ -588,12 +1136,19 @@ function ActionPanel(props: {
   const canAcknowledge = canModerate && ticket.status === "OPEN";
   const canAssign = canModerate && ["ACKNOWLEDGED", "ASSIGNED", "ACCEPTED"].includes(ticket.status);
 
-  // Engineer actions are only available to THE engineer assigned to this ticket.
-  const isMyTicket =
-    currentUserRole === "ENGINEER" && ticket.assigned_engineer?.id === currentUserId;
+  // Engineer-style actions (accept / start / resolve / sign) are available to
+  // whoever the ticket is currently assigned to — engineer, owner, or manager
+  // who self-assigned.
+  const isMyTicket = ticket.assigned_engineer?.id === currentUserId;
   const canAccept = isMyTicket && ticket.status === "ASSIGNED";
   const canStart = isMyTicket && ticket.status === "ACCEPTED";
   const canResolve = isMyTicket && ticket.status === "RESOLVING";
+
+  // Sub-engineers can be added once ticket is acknowledged, by assignee / Owner / Manager.
+  const isAssignee = ticket.assigned_engineer?.id === currentUserId;
+  const canManageSubEngineers =
+    (canModerate || isAssignee) &&
+    ticket.status !== "OPEN";
 
   // Signing state (Phase 2.4 — both signatures now collected in-app)
   const customerSigned = !!ticket.resolution?.customer_signed_at;
@@ -690,6 +1245,17 @@ function ActionPanel(props: {
           >
             {ticket.assigned_engineer ? "Reassign engineer" : "Assign engineer"}
           </Button>
+
+          {canModerate && ticket.assigned_engineer?.id !== currentUserId && (
+            <button
+              type="button"
+              onClick={onSelfAssign}
+              disabled={acting === "self-assign"}
+              className="mt-2 block w-full rounded-md px-2 py-1.5 text-center text-[12.5px] text-ink-muted hover:text-ink transition-colors disabled:opacity-50"
+            >
+              {acting === "self-assign" ? "Assigning to you…" : "or, assign to me"}
+            </button>
+          )}
         </div>
       )}
 
@@ -892,6 +1458,19 @@ function ActionPanel(props: {
           <p className="mt-2 text-[12px] text-ink-subtle">
             Opens in a new tab. Use your browser&apos;s Save (⌘S) to keep a copy.
           </p>
+          <button
+            type="button"
+            onClick={onRegenPdf}
+            disabled={acting === "pdf-regen"}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-line bg-white px-3 py-1.5 text-[12.5px] text-ink hover:border-ink hover:bg-surface-raised transition-colors disabled:opacity-50"
+            title="Re-render the PDF in place (useful after a template update)"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M3 8a5 5 0 0 1 8.5-3.5L14 3M13 8a5 5 0 0 1-8.5 3.5L2 13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M14 3v3h-3M2 13v-3h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {acting === "pdf-regen" ? "Regenerating…" : "Regenerate PDF"}
+          </button>
         </div>
       )}
 
@@ -934,11 +1513,11 @@ function ActionPanel(props: {
         </div>
       )}
 
-      {isOwner && (
+      {canModerate && (
         <div className="border-t border-line pt-5">
           <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">Warranty</p>
           <p className="mt-1 text-[12.5px] text-ink-muted">
-            Only the Owner can change this.
+            Owner or Manager can change this.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {WARRANTY_OPTIONS.map((w) => {
@@ -1019,11 +1598,19 @@ function labelForEvent(e: TicketEvent): string {
     case "RESOLVING_STARTED": return "Started resolving";
     case "RESOLVED": return "Marked resolved";
     case "CLOSED": return "Closed";
+    case "PARTS_SHIPPED": {
+      const p = (e.payload as { courier?: string; item_count?: number } | null) ?? {};
+      const items = p.item_count ? ` (${p.item_count} item${p.item_count === 1 ? "" : "s"})` : "";
+      return p.courier ? `Parts shipped via ${p.courier}${items}` : `Parts shipped${items}`;
+    }
+    case "PARTS_DELIVERED": {
+      const p = (e.payload as { courier?: string } | null) ?? {};
+      return p.courier ? `Shipment delivered (${p.courier})` : "Shipment delivered";
+    }
     default: return e.event_type;
   }
 }
 
 function timeFmt(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  return fmtIst(iso);
 }

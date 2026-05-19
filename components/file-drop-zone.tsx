@@ -36,6 +36,7 @@ type Props = {
 export function FileDropZone({ files, onChange }: Props) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
@@ -144,6 +145,37 @@ export function FileDropZone({ files, onChange }: Props) {
         <p className="mt-1.5 text-[12.5px] text-ink-subtle">
           JPG, PNG, GIF, MP4, MOV &middot; up to 50&nbsp;MB each &middot; max {MAX_FILES} files
         </p>
+
+        {/* Camera capture — primarily for phones; desktops fall back to webcam
+            or the regular file picker depending on the browser. We stop the
+            click propagating so it doesn't double-trigger the drop zone's
+            click-to-browse handler. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            cameraRef.current?.click();
+          }}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-[12.5px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+            <rect x="1.5" y="4" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="8" cy="8.5" r="2.4" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M5.5 4l1-1.3h3l1 1.3" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+          </svg>
+          Take a photo
+        </button>
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={(e) => {
+            if (e.target.files) acceptFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
       </div>
 
       {/* Errors ------------------------------------------------------ */}

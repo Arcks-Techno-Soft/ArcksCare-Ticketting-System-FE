@@ -4,37 +4,50 @@
  * WorkNotes — internal engineer notes section on the ticket detail page.
  *
  * Read-only for everyone EXCEPT the assigned engineer while the ticket is
- * RESOLVING. Adds an inline composer when allowed; otherwise just renders
- * the notes timeline.
+ * RESOLVING. Adds an inline composer (with optional worksite image upload)
+ * when allowed; otherwise just renders the notes timeline.
  */
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import {
+  NoteAttachmentGrid,
+  NoteImagePicker,
+  type NoteAttachmentView,
+  type PickedImage,
+} from "@/components/admin/note-images";
+import { fmtIst } from "@/lib/format-date";
 
 export type WorkNote = {
   id: number;
   body: string;
   created_at: string;
   author: { id: number; name: string; role: string; username: string };
+  attachments?: NoteAttachmentView[];
 };
 
 type Props = {
   notes: WorkNote[];
   canAdd: boolean;
   adding: boolean;
-  onSubmit: (body: string) => void | Promise<void>;
+  /** Submit a note. `images` may be empty. */
+  onSubmit: (body: string, images: File[]) => void | Promise<void>;
 };
 
 export function WorkNotes({ notes, canAdd, adding, onSubmit }: Props) {
   const [draft, setDraft] = useState("");
+  const [images, setImages] = useState<PickedImage[]>([]);
 
   const handleSubmit = async () => {
     const body = draft.trim();
     if (body.length < 2) return;
-    await onSubmit(body);
+    await onSubmit(body, images.map((p) => p.file));
     setDraft("");
+    // Revoke previews + clear once the parent has accepted them.
+    images.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    setImages([]);
   };
 
   return (
@@ -58,13 +71,13 @@ export function WorkNotes({ notes, canAdd, adding, onSubmit }: Props) {
               <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink">
                 {n.body}
               </p>
+              {n.attachments && n.attachments.length > 0 && (
+                <NoteAttachmentGrid attachments={n.attachments} />
+              )}
               <p className="mt-1 text-[11.5px] text-ink-subtle">
                 {n.author.name}
                 <span className="mx-1">·</span>
-                {new Date(n.created_at).toLocaleString([], {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
+                {fmtIst(n.created_at)}
               </p>
             </li>
           ))
@@ -86,6 +99,7 @@ export function WorkNotes({ notes, canAdd, adding, onSubmit }: Props) {
                 onChange={(e) => setDraft(e.target.value)}
                 className="min-h-[90px]"
               />
+              <NoteImagePicker images={images} onChange={setImages} />
               <div className="flex justify-end">
                 <Button
                   type="button"

@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, FieldGroup } from "@/components/ui/Field";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
+import { fmtIst } from "@/lib/format-date";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -51,7 +52,7 @@ export default function CustomerSignPage() {
         return;
       }
       if (res.status === 410) {
-        setLoadError("This signing link has expired. Please request a new one from ArcksCare support.");
+        setLoadError("This signing link has expired. Please request a new one from SK-POS Care support.");
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -145,7 +146,7 @@ export default function CustomerSignPage() {
           </h1>
           <p className="mt-4 text-[14.5px] leading-relaxed text-ink-muted">
             Your signature for <strong>{doc.reference}</strong> was received on{" "}
-            <strong>{new Date(doc.customer_signed_at).toLocaleString()}</strong>. Our engineer will
+            <strong>{fmtIst(doc.customer_signed_at)}</strong>. Our engineer will
             counter-sign and close the ticket. A copy of the signed document will be retained for your records.
           </p>
         </div>
@@ -192,10 +193,10 @@ export default function CustomerSignPage() {
               )}
             </Section>
 
-            <Section title="Resolution by ArcksCare">
+            <Section title="Resolution by SK-POS Care">
               {doc.engineer_name && <Row k="Engineer" v={doc.engineer_name} />}
               {doc.resolved_at && (
-                <Row k="Resolved on" v={new Date(doc.resolved_at).toLocaleString()} />
+                <Row k="Resolved on" v={fmtIst(doc.resolved_at)} />
               )}
               <div className="px-4 py-2.5">
                 <p className="text-[12px] uppercase tracking-[0.10em] text-ink-subtle">Summary</p>
@@ -267,7 +268,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/" className="flex items-center gap-2.5">
             <div className="h-7 w-7 rounded-md bg-ink" />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-              ArcksCare
+              SK-POS Care
             </span>
           </Link>
         </div>

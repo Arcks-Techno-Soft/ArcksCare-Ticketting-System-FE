@@ -19,7 +19,7 @@ export default function Home() {
         <div className="flex items-center gap-2.5">
           <div className="h-7 w-7 rounded-md bg-ink" />
           <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-            ArcksCare
+            SK-POS Care
           </span>
         </div>
         <nav className="flex items-center gap-4">
@@ -102,7 +102,7 @@ export default function Home() {
 
       <footer className="border-t border-line py-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 text-[12px] text-ink-subtle">
-          <span>© {new Date().getFullYear()} ArcksCare</span>
+          <span>© {new Date().getFullYear()} SK-POS Care</span>
           <span>Made for restaurants, hotels, retail & cloud kitchens</span>
         </div>
       </footer>
