@@ -23,6 +23,7 @@ type UserRow = {
   phone?: string | null;
   email?: string | null;
   role: "OWNER" | "MANAGER" | "ENGINEER";
+  district?: string | null;
   active: boolean;
 };
 
@@ -56,6 +57,7 @@ export default function UsersPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<(typeof ROLE_OPTIONS)[number]>("Engineer");
+  const [district, setDistrict] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -108,6 +110,11 @@ export default function UsersPage() {
       setSubmitting(false);
       return;
     }
+    if (role === "Engineer" && !district.trim()) {
+      setFormError("Enter the district this engineer covers.");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const res = await authFetch(`${API_BASE_URL}/api/v1/admin/users`, {
@@ -121,6 +128,7 @@ export default function UsersPage() {
           username: cleanUsername,
           password,
           role: ROLE_VALUES[role],
+          district: role === "Engineer" ? district.trim() : null,
         }),
       });
       if (!res.ok) {
@@ -147,6 +155,7 @@ export default function UsersPage() {
       setPassword("");
       setShowPassword(false);
       setRole("Engineer");
+      setDistrict("");
       fetchUsers();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Failed to create user");
@@ -274,7 +283,7 @@ export default function UsersPage() {
                 Share this with the user out-of-band (Signal/WhatsApp, not email).
               </p>
             </div>
-            <div className="md:col-span-2">
+            <div className={role === "Engineer" ? "" : "md:col-span-2"}>
               <Label htmlFor="role" required>Role</Label>
               <Select
                 id="role"
@@ -283,6 +292,24 @@ export default function UsersPage() {
                 onChange={(e) => setRole(e.target.value as (typeof ROLE_OPTIONS)[number])}
               />
             </div>
+            {role === "Engineer" && (
+              <div>
+                <Label htmlFor="district" required>District</Label>
+                <Input
+                  id="district"
+                  value={district}
+                  onChange={(e) => setDistrict(e.target.value)}
+                  required
+                  autoComplete="off"
+                  placeholder="e.g. Mysuru"
+                  maxLength={80}
+                />
+                <p className="mt-1 text-[11.5px] text-ink-subtle">
+                  District this engineer covers. Tickets from a matching city
+                  list this engineer first when assigning.
+                </p>
+              </div>
+            )}
 
             {formError && (
               <div className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-700">
@@ -317,6 +344,7 @@ export default function UsersPage() {
                   <Th>Name</Th>
                   <Th>Username</Th>
                   <Th>Role</Th>
+                  <Th>District</Th>
                   <Th>Phone</Th>
                   <Th>Email</Th>
                   <Th>Status</Th>
@@ -325,11 +353,11 @@ export default function UsersPage() {
               </thead>
               <tbody className="divide-y divide-line">
                 {loading ? (
-                  <tr><td colSpan={7} className="px-5 py-8 text-center text-ink-subtle">Loading…</td></tr>
+                  <tr><td colSpan={8} className="px-5 py-8 text-center text-ink-subtle">Loading…</td></tr>
                 ) : error ? (
-                  <tr><td colSpan={7} className="px-5 py-8 text-center text-red-600">{error}</td></tr>
+                  <tr><td colSpan={8} className="px-5 py-8 text-center text-red-600">{error}</td></tr>
                 ) : users.length === 0 ? (
-                  <tr><td colSpan={7} className="px-5 py-8 text-center text-ink-subtle">No users yet.</td></tr>
+                  <tr><td colSpan={8} className="px-5 py-8 text-center text-ink-subtle">No users yet.</td></tr>
                 ) : (
                   users.map((u) => (
                     <tr key={u.id} className={u.active ? "" : "opacity-60"}>
@@ -342,6 +370,7 @@ export default function UsersPage() {
                           {ROLE_LABEL[u.role] ?? u.role}
                         </span>
                       </Td>
+                      <Td>{u.district || "—"}</Td>
                       <Td>{u.phone || "—"}</Td>
                       <Td>{u.email || "—"}</Td>
                       <Td>

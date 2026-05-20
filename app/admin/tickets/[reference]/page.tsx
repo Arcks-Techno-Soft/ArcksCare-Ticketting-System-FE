@@ -15,7 +15,8 @@ import { WorkNotes, type WorkNote } from "@/components/admin/work-notes";
 import {
   SubEngineers,
   type SubEngineer,
-  type SubEngineerSuggestion,
+  type RosterContact,
+  type AddSubEngineerInput,
 } from "@/components/admin/sub-engineers";
 import {
   Spares,
@@ -72,7 +73,9 @@ type AdminTicket = {
     customer_signer_name?: string | null;
     customer_signed_at?: string | null;
     engineer_signed_at?: string | null;
+    engineer_signer_name?: string | null;
     pdf_generated_at?: string | null;
+    field_sign_link_generated_at?: string | null;
     customer_sign_token: string;
   } | null;
 
@@ -136,8 +139,8 @@ export default function TicketDetailPage() {
   const [resolveSummary, setResolveSummary] = useState("");
   const [showResolveForm, setShowResolveForm] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
-  const [subSuggestions, setSubSuggestions] = useState<SubEngineerSuggestion[]>([]);
-  const [subSuggestionsLoading, setSubSuggestionsLoading] = useState(false);
+  const [roster, setRoster] = useState<RosterContact[]>([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
   const [charges, setCharges] = useState<ChargesSummary | null>(null);
   const [spareCatalog, setSpareCatalog] = useState<SpareCatalogItem[]>([]);
   const [spareError, setSpareError] = useState<string | null>(null);
@@ -196,14 +199,14 @@ export default function TicketDetailPage() {
       setEvents(e.ok ? await e.json() : []);
       setEngineers(eng.ok ? await eng.json() : []);
       setNotes(n.ok ? await n.json() : []);
-      setSubSuggestions(s.ok ? ((await s.json()) as SubEngineerSuggestion[]) : []);
+      setRoster(s.ok ? ((await s.json()) as RosterContact[]) : []);
       setCharges(c.ok ? ((await c.json()) as ChargesSummary) : null);
       setShipments(sh.ok ? ((await sh.json()) as Shipment[]) : []);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Load failed");
     } finally {
       setLoading(false);
-      setSubSuggestionsLoading(false);
+      setRosterLoading(false);
     }
   }, [reference, authFetch]);
 
@@ -282,7 +285,7 @@ export default function TicketDetailPage() {
 
   const handleSelfAssign = () => callAction("self-assign", "/self-assign");
 
-  const handleAddSubEngineer = async (input: { name: string; phone: string; location: string }) => {
+  const handleAddSubEngineer = async (input: AddSubEngineerInput) => {
     setSubError(null);
     setActing("sub-add");
     try {
@@ -325,6 +328,32 @@ export default function TicketDetailPage() {
       await fetchAll();
     } catch (e) {
       setSubError(e instanceof Error ? e.message : "Failed to remove sub-engineer");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleSetSubEngineerFee = async (id: number, fee: number) => {
+    setSubError(null);
+    setActing("sub-fee");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/sub-engineers/${id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fee_inr: fee }),
+        }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setSubError(e instanceof Error ? e.message : "Failed to save fee");
     } finally {
       setActing(null);
     }
@@ -630,6 +659,28 @@ export default function TicketDetailPage() {
     }
   };
 
+  const handleGenerateFieldLink = async () => {
+    setActionError(null);
+    setActing("field-link");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/field-sign-link`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const txt = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(txt).detail ?? msg; } catch { msg = txt.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to generate signing link");
+    } finally {
+      setActing(null);
+    }
+  };
+
   const handleAddNote = async (body: string, images: File[]) => {
     setActionError(null);
     setActing("note");
@@ -845,6 +896,7 @@ export default function TicketDetailPage() {
               currentUserRole={user.role}
               canModerate={canModerate}
               isOwner={isOwner}
+              hasUndeliveredShipments={shipments.some((s) => !s.delivered_at)}
               acting={acting}
               actionError={actionError}
               selectedEngineerId={selectedEngineerId}
@@ -863,6 +915,7 @@ export default function TicketDetailPage() {
               onResolve={handleResolve}
               onEngineerSign={handleEngineerSign}
               onCustomerSign={handleCustomerSign}
+              onGenerateFieldLink={handleGenerateFieldLink}
               onDownloadPdf={handleDownloadPdf}
               onRegenPdf={handleRegenPdf}
             />
@@ -918,10 +971,11 @@ export default function TicketDetailPage() {
               }
               defaultLocation={ticket.city}
               busy={acting === "sub-add" || acting === "sub-remove"}
-              suggestions={subSuggestions}
-              suggestionsLoading={subSuggestionsLoading}
+              roster={roster}
+              rosterLoading={rosterLoading}
               onAdd={handleAddSubEngineer}
               onRemove={handleRemoveSubEngineer}
+              onSetFee={handleSetSubEngineerFee}
               error={subError}
             />
             <Timeline events={events} />
@@ -1078,6 +1132,7 @@ function ActionPanel(props: {
   currentUserRole: string;
   canModerate: boolean;
   isOwner: boolean;
+  hasUndeliveredShipments: boolean;
   acting: string | null;
   actionError: string | null;
   selectedEngineerId: number | null;
@@ -1096,15 +1151,18 @@ function ActionPanel(props: {
   onResolve: () => void;
   onEngineerSign: (blob: Blob) => Promise<void> | void;
   onCustomerSign: (blob: Blob, signerName: string) => Promise<void> | void;
+  onGenerateFieldLink: () => void | Promise<void>;
   onDownloadPdf: () => void | Promise<void>;
   onRegenPdf: () => void | Promise<void>;
 }) {
   const {
     ticket, engineers, currentUserId, currentUserRole, canModerate, isOwner,
+    hasUndeliveredShipments,
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
     onAcknowledge, onAssign, onSelfAssign, onWarranty, onSeverity,
-    onAccept, onStartWork, onResolve, onEngineerSign, onCustomerSign, onDownloadPdf, onRegenPdf,
+    onAccept, onStartWork, onResolve, onEngineerSign, onCustomerSign,
+    onGenerateFieldLink, onDownloadPdf, onRegenPdf,
   } = props;
   const signPadRef = useRef<SignaturePadHandle>(null);
   const [signEmpty, setSignEmpty] = useState(true);
@@ -1150,24 +1208,42 @@ function ActionPanel(props: {
     (canModerate || isAssignee) &&
     ticket.status !== "OPEN";
 
-  // Signing state (Phase 2.4 — both signatures now collected in-app)
+  // Signing state — both signatures collected in-app, or remotely via a
+  // sub-engineer link for tickets resolved away from base.
   const customerSigned = !!ticket.resolution?.customer_signed_at;
   const engineerSigned = !!ticket.resolution?.engineer_signed_at;
+  // Remote field-signing: once the link is generated, on-site signing locks.
+  const fieldMode = !!ticket.resolution?.field_sign_link_generated_at;
+  const hasSubEngineer = (ticket.sub_engineers?.length ?? 0) > 0;
+  const fieldSignToken = ticket.resolution?.customer_sign_token ?? "";
+  const fieldSignUrl =
+    fieldSignToken && typeof window !== "undefined"
+      ? `${window.location.origin}/field-sign/${fieldSignToken}`
+      : "";
   // Engineer captures customer's signature on their device first…
   const canCaptureCustomer =
-    isMyTicket && ticket.status === "RESOLVED" && !customerSigned;
+    isMyTicket && ticket.status === "RESOLVED" && !customerSigned && !fieldMode;
   // …then signs themselves to close the ticket.
   const canEngineerSign =
-    isMyTicket && ticket.status === "RESOLVED" && customerSigned && !engineerSigned;
+    isMyTicket && ticket.status === "RESOLVED" && customerSigned && !engineerSigned && !fieldMode;
+  // Generate the remote sub-engineer signing link — only once a sub-engineer
+  // is on the ticket and signing hasn't started on-site.
+  const canGenerateFieldLink =
+    (isMyTicket || canModerate) &&
+    ticket.status === "RESOLVED" &&
+    hasSubEngineer &&
+    !fieldMode &&
+    !customerSigned &&
+    !engineerSigned;
   const canDownloadPdf =
-    (isOwner || currentUserRole === "MANAGER") &&
+    (isOwner || currentUserRole === "MANAGER" || isMyTicket) &&
     ticket.status === "CLOSED" &&
     !!ticket.resolution?.pdf_generated_at;
 
   const hasAnyAction =
     canAcknowledge || canAssign || isOwner || canAccept || canStart || canResolve ||
-    canCaptureCustomer || canEngineerSign || canDownloadPdf ||
-    (ticket.status === "RESOLVED" && !customerSigned);
+    canCaptureCustomer || canEngineerSign || canGenerateFieldLink || canDownloadPdf ||
+    (ticket.status === "RESOLVED" && !!ticket.resolution);
   if (!hasAnyAction) {
     return (
       <div className="rounded-xl2 border border-line bg-surface-raised p-5 text-[13px] text-ink-muted">
@@ -1233,6 +1309,8 @@ function ActionPanel(props: {
             // When reassigning, hide the engineer currently on the ticket — reassigning
             // to the same person isn't a meaningful action.
             excludeId={ticket.assigned_engineer?.id ?? null}
+            // Surface engineers covering this ticket's city/district first.
+            matchDistrict={ticket.city}
             placeholder="Choose engineer"
           />
           <Button
@@ -1364,13 +1442,70 @@ function ActionPanel(props: {
             <div className="flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${engineerSigned ? "bg-emerald-500" : "bg-neutral-300"}`} />
               <span className="text-ink">
-                Engineer: {engineerSigned ? "signed" : "pending"}
+                {fieldMode ? "Sub-engineer" : "Engineer"}:{" "}
+                {engineerSigned ? (
+                  ticket.resolution.engineer_signer_name ? (
+                    <>signed by <strong>{ticket.resolution.engineer_signer_name}</strong></>
+                  ) : (
+                    "signed"
+                  )
+                ) : (
+                  "pending"
+                )}
               </span>
             </div>
           </div>
-          {!customerSigned && !canCaptureCustomer && (
+          {fieldMode && !engineerSigned && (
+            <p className="mt-3 text-[12px] text-ink-subtle">
+              Waiting for the sub-engineer to submit both signatures via the shared link.
+            </p>
+          )}
+          {!fieldMode && !customerSigned && !canCaptureCustomer && (
             <p className="mt-3 text-[12px] text-ink-subtle">
               The assigned engineer captures the customer&apos;s signature on-site.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ------------------- remote sub-engineer signing -------------------- */}
+      {canGenerateFieldLink && (
+        <div className="border-t border-line pt-5">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+            Remote signing
+          </p>
+          <p className="mt-1 text-[12.5px] text-ink-muted">
+            Generate a no-login link and send it to the sub-engineer. They collect
+            the customer&apos;s signature and their own to close the ticket.
+            Generating the link disables on-site signing here.
+          </p>
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            loading={acting === "field-link"}
+            onClick={onGenerateFieldLink}
+            className="mt-3 w-full"
+          >
+            Generate sub-engineer signing link
+          </Button>
+        </div>
+      )}
+
+      {fieldMode && !engineerSigned && (
+        <div className="border-t border-line pt-5">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+            Sub-engineer signing link
+          </p>
+          <p className="mt-1 text-[12.5px] text-ink-muted">
+            Send this link to the sub-engineer (WhatsApp, SMS, email). It opens
+            without a login. On-site signing is disabled while it&apos;s active.
+          </p>
+          <CopyableLink url={fieldSignUrl} />
+          {hasUndeliveredShipments && (
+            <p className="mt-3 rounded-xl2 border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">
+              Spare parts are still in transit — the sub-engineer can&apos;t
+              submit until every shipment is marked delivered.
             </p>
           )}
         </div>
@@ -1426,11 +1561,17 @@ function ActionPanel(props: {
           <div className="mt-3">
             <SignaturePad ref={signPadRef} onChangeIsEmpty={setSignEmpty} height={160} />
           </div>
+          {hasUndeliveredShipments && (
+            <p className="mt-3 rounded-xl2 border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">
+              Spare parts are still in transit. Mark every shipment delivered
+              before closing the ticket.
+            </p>
+          )}
           <Button
             type="button"
             variant="primary"
             size="md"
-            disabled={signEmpty}
+            disabled={signEmpty || hasUndeliveredShipments}
             loading={acting === "sign"}
             onClick={submitEngineerSig}
             className="mt-3 w-full"
@@ -1558,6 +1699,36 @@ function ActionPanel(props: {
   );
 }
 
+function CopyableLink({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable — the user can still select the text manually.
+    }
+  };
+  return (
+    <div className="mt-3 flex items-stretch gap-2">
+      <input
+        readOnly
+        value={url}
+        onFocus={(e) => e.currentTarget.select()}
+        className="min-w-0 flex-1 rounded-xl2 border border-line bg-surface-raised px-3 py-2 font-mono text-[12px] text-ink"
+      />
+      <button
+        type="button"
+        onClick={copy}
+        className="shrink-0 rounded-xl2 border border-line bg-white px-3 py-2 text-[12.5px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface-raised"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
 function Timeline({ events }: { events: TicketEvent[] }) {
   return (
     <div className="rounded-xl2 border border-line bg-white shadow-soft">
@@ -1597,6 +1768,16 @@ function labelForEvent(e: TicketEvent): string {
     case "ACCEPTED": return "Accepted by engineer";
     case "RESOLVING_STARTED": return "Started resolving";
     case "RESOLVED": return "Marked resolved";
+    case "FIELD_SIGN_LINK_GENERATED": return "Remote signing link generated";
+    case "CUSTOMER_SIGNED": {
+      const p = (e.payload as { signer_name?: string } | null) ?? {};
+      return p.signer_name ? `Customer signed (${p.signer_name})` : "Customer signed";
+    }
+    case "ENGINEER_SIGNED": return "Engineer signed";
+    case "SUB_ENGINEER_SIGNED": {
+      const p = (e.payload as { signer_name?: string } | null) ?? {};
+      return p.signer_name ? `Sub-engineer signed (${p.signer_name})` : "Sub-engineer signed";
+    }
     case "CLOSED": return "Closed";
     case "PARTS_SHIPPED": {
       const p = (e.payload as { courier?: string; item_count?: number } | null) ?? {};

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Users, ChevronRight } from "lucide-react";
+import { Users, Wrench, ChevronRight } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { useAuth } from "@/lib/auth";
@@ -39,6 +39,12 @@ export default function SettingsPage() {
             title="Users & roles"
             description="Create new staff accounts, manage roles, deactivate access."
             icon={<Users size={20} />}
+          />
+          <SettingsTile
+            href="/admin/settings/sub-engineers"
+            title="Sub-engineer roster"
+            description="Manage field contractors by district. Feeds each ticket's add dropdown."
+            icon={<Wrench size={20} />}
           />
         </div>
       </section>

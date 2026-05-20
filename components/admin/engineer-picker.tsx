@@ -7,6 +7,8 @@
  * - Shows the selected engineer's name in the trigger
  * - Closes on outside click or Escape
  * - Excludes a "skip" engineer (e.g. the currently assigned one when reassigning)
+ * - When `matchDistrict` is set, engineers covering that district are listed
+ *   first under an "In <district>" heading; the rest stay selectable below.
  */
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,6 +19,7 @@ export type Engineer = {
   username: string;
   name: string;
   role: string;
+  district?: string | null;
 };
 
 type Props = {
@@ -25,15 +28,20 @@ type Props = {
   onChange: (id: number) => void;
   /** Hide this engineer from the list (e.g. currently assigned one when reassigning). */
   excludeId?: number | null;
+  /** Ticket location — engineers whose district matches are surfaced first. */
+  matchDistrict?: string | null;
   placeholder?: string;
   disabled?: boolean;
 };
+
+const norm = (s?: string | null) => (s ?? "").trim().toLowerCase();
 
 export function EngineerPicker({
   engineers,
   selectedId,
   onChange,
   excludeId,
+  matchDistrict,
   placeholder = "Choose engineer",
   disabled,
 }: Props) {
@@ -60,6 +68,50 @@ export function EngineerPicker({
   const visible = engineers.filter((e) => e.id !== excludeId);
   const selected = engineers.find((e) => e.id === selectedId) ?? null;
   const empty = visible.length === 0;
+
+  const wanted = norm(matchDistrict);
+  const matched = wanted ? visible.filter((e) => norm(e.district) === wanted) : [];
+  const others =
+    matched.length > 0 ? visible.filter((e) => norm(e.district) !== wanted) : visible;
+
+  const renderOption = (e: Engineer) => {
+    const isSelected = e.id === selectedId;
+    return (
+      <li key={e.id}>
+        <button
+          type="button"
+          role="option"
+          aria-selected={isSelected}
+          onClick={() => {
+            onChange(e.id);
+            setOpen(false);
+          }}
+          className={cn(
+            "flex w-full items-center justify-between px-4 py-2.5 text-left text-[14px] transition-colors",
+            isSelected ? "bg-surface-raised text-ink" : "text-ink hover:bg-surface-raised"
+          )}
+        >
+          <span className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full border border-line bg-white text-[11px] font-medium text-ink">
+              {e.name.slice(0, 1).toUpperCase()}
+            </span>
+            <span className="flex flex-col">
+              <span className="font-medium text-ink">{e.name}</span>
+              <span className="text-[11.5px] text-ink-subtle">
+                @{e.username}
+                {e.district ? ` · ${e.district}` : ""}
+              </span>
+            </span>
+          </span>
+          {isSelected && (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden className="text-ink">
+              <path d="M3 8l3 3 7-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+      </li>
+    );
+  };
 
   return (
     <div ref={rootRef} className="relative">
@@ -93,44 +145,38 @@ export function EngineerPicker({
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.12 }}
             role="listbox"
-            className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-xl2 border border-line bg-white shadow-lift"
+            className="absolute z-50 mt-1.5 max-h-72 w-full overflow-auto rounded-xl2 border border-line bg-white shadow-lift"
           >
-            {visible.map((e) => {
-              const isSelected = e.id === selectedId;
-              return (
-                <li key={e.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    onClick={() => {
-                      onChange(e.id);
-                      setOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between px-4 py-2.5 text-left text-[14px] transition-colors",
-                      isSelected ? "bg-surface-raised text-ink" : "text-ink hover:bg-surface-raised"
-                    )}
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-line bg-white text-[11px] font-medium text-ink">
-                        {e.name.slice(0, 1).toUpperCase()}
-                      </span>
-                      <span className="font-medium text-ink">{e.name}</span>
-                      <span className="text-[12px] text-ink-subtle">@{e.username}</span>
-                    </span>
-                    {isSelected && (
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden className="text-ink">
-                        <path d="M3 8l3 3 7-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
+            {matched.length > 0 ? (
+              <>
+                <SectionLabel>In {matchDistrict}</SectionLabel>
+                {matched.map(renderOption)}
+                {others.length > 0 && (
+                  <>
+                    <SectionLabel divider>Other engineers</SectionLabel>
+                    {others.map(renderOption)}
+                  </>
+                )}
+              </>
+            ) : (
+              visible.map(renderOption)
+            )}
           </motion.ul>
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function SectionLabel({ children, divider }: { children: React.ReactNode; divider?: boolean }) {
+  return (
+    <li
+      className={cn(
+        "bg-surface-raised/60 px-4 pb-1 pt-2 text-[10.5px] uppercase tracking-[0.12em] text-ink-subtle",
+        divider && "border-t border-line/60"
+      )}
+    >
+      {children}
+    </li>
   );
 }
