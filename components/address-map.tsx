@@ -227,7 +227,6 @@ export default function AddressMap({ initial, onLocationChange }: Props) {
           boxZoom={false}
           keyboard={false}
           zoomControl={false}
-          tap={false}
           style={{ height: 280, width: "100%" }}
         >
           <TileLayer
