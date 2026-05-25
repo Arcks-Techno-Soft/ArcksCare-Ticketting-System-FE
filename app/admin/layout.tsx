@@ -2,7 +2,7 @@ import { AuthProvider } from "@/lib/auth";
 import "../globals.css";
 
 export const metadata = {
-  title: "SK-POS Care — Admin",
+  title: "SK-POS Support — Admin",
 };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -16,9 +16,9 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "SK-POS Care — Premium Support for your Hardware",
+  title: "SK-POS Support — Premium Support for your Hardware",
   description:
-    "Raise a support ticket for your POS, printers, kitchen displays, UPS, kiosks and CCTV. White-glove service from the SK-POS Care team.",
+    "Raise a support ticket for your POS, printers, kitchen displays, UPS, kiosks and CCTV. White-glove service from the SK-POS Support team.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

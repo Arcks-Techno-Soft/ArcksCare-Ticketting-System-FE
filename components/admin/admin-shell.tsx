@@ -77,7 +77,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             {!collapsed && (
               <div className="flex items-baseline gap-2 overflow-hidden">
                 <span className="font-display text-[18px] font-semibold tracking-tight text-ink">
-                  SK-POS Care
+                  SK-POS Support
                 </span>
                 <span className="text-[10.5px] uppercase tracking-[0.16em] text-ink-subtle">
                   Admin

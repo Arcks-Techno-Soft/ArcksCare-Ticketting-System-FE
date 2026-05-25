@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 type SearchParams = { ref?: string; email?: string };
 
 export const metadata = {
-  title: "Ticket submitted — SK-POS Care",
+  title: "Ticket submitted — SK-POS Support",
 };
 
 // Next.js 15+ made `searchParams` a Promise. Await it before accessing values.
@@ -24,7 +24,7 @@ export default async function SuccessPage({
           <Link href="/" className="flex items-center gap-2.5">
             <div className="h-7 w-7 rounded-md bg-ink" />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-              SK-POS Care
+              SK-POS Support
             </span>
           </Link>
         </header>
@@ -71,7 +71,7 @@ export default async function SuccessPage({
         </section>
 
         <footer className="py-6 text-center text-[12px] text-ink-subtle">
-          © {new Date().getFullYear()} SK-POS Care
+          © {new Date().getFullYear()} SK-POS Support
         </footer>
       </div>
     </main>

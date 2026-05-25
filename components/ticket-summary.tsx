@@ -48,7 +48,7 @@ export function TicketSummary({ values, attachments = [] }: Props) {
                 New support ticket
               </div>
               <div className="font-display text-[15px] font-medium text-ink">
-                SK-POS Care
+                SK-POS Support
               </div>
             </div>
           </div>

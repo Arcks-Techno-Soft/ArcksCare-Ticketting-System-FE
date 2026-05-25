@@ -2,7 +2,7 @@ import Link from "next/link";
 import { TicketForm } from "@/components/ticket-form";
 
 export const metadata = {
-  title: "Raise a ticket — SK-POS Care",
+  title: "Raise a ticket — SK-POS Support",
   description:
     "Submit a support request for your hardware. A specialist will respond shortly.",
 };
@@ -15,19 +15,19 @@ export default function RaiseTicketPage() {
           <Link href="/" className="flex items-center gap-2.5">
             <div className="h-7 w-7 rounded-md bg-ink" />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-              SK-POS Care
+              SK-POS Support
             </span>
           </Link>
           <div className="flex items-center gap-5">
             <Link
               href="/admin/login"
-              className="text-[13px] text-ink-muted hover:text-ink transition-colors"
+              className="hidden sm:inline-block text-[13px] text-ink-muted hover:text-ink transition-colors"
             >
               Admin login
             </Link>
             <Link
               href="/"
-              className="text-[13px] text-ink-muted hover:text-ink transition-colors"
+              className="hidden sm:inline-block text-[13px] text-ink-muted hover:text-ink transition-colors"
             >
               ← Back home
             </Link>
