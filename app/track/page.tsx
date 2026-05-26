@@ -7,7 +7,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 
-const REFERENCE_RE = /^AC-\d{4}-\d{4,6}$/i;
+// Backend (app/utils/ticket_id.py) prefixes references with the customer's
+// state code — KA, TN, MH, TG, AP, … — falling back to "AC" only when the
+// state is missing or unknown. So accept any 2-letter prefix here.
+const REFERENCE_RE = /^[A-Z]{2}-\d{4}-\d{4,6}$/i;
 
 export default function TrackPage() {
   const router = useRouter();
@@ -22,7 +25,7 @@ export default function TrackPage() {
       return;
     }
     if (!REFERENCE_RE.test(cleaned)) {
-      setError("That doesn't look like a reference. They look like AC-2026-00042.");
+      setError("That doesn't look like a reference. They look like KA-2026-00042.");
       return;
     }
     router.push(`/track/${encodeURIComponent(cleaned)}`);
