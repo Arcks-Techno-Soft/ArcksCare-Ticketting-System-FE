@@ -66,6 +66,18 @@ export default function Home() {
           </span>
         </div>
 
+        <div className="mt-4">
+          <Link
+            href="/track"
+            className="group inline-flex items-center gap-1 text-[14px] font-medium text-ink-muted transition-colors hover:text-ink"
+          >
+            Already raised a ticket? Track it here
+            <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
+              →
+            </span>
+          </Link>
+        </div>
+
         {/* Feature row */}
         <div className="mt-24 grid gap-10 border-t border-line pt-12 md:grid-cols-3">
           {[
