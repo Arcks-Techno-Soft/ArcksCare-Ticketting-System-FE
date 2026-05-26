@@ -67,14 +67,13 @@ export default function Home() {
         </div>
 
         <div className="mt-4">
-          <Link
-            href="/track"
-            className="group inline-flex items-center gap-1 text-[14px] font-medium text-ink-muted transition-colors hover:text-ink"
-          >
-            Already raised a ticket? Track it here
-            <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
-              →
-            </span>
+          <Link href="/track">
+            <Button variant="outline" size="md">
+              Already raised a ticket? Track it here
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Button>
           </Link>
         </div>
 
