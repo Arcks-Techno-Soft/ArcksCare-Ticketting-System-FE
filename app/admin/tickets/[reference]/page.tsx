@@ -150,6 +150,10 @@ export default function TicketDetailPage() {
   // Distinct from "ticket is null because a transient fetch failed", which
   // used to surface as a misleading "Ticket not found" screen.
   const [notFound, setNotFound] = useState(false);
+  // True when the backend returned 403 — typically an engineer trying to open
+  // a ticket they aren't assigned to (e.g. tapped a WhatsApp alert meant for
+  // an owner/manager).
+  const [forbidden, setForbidden] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Auth gate
@@ -172,6 +176,18 @@ export default function TicketDetailPage() {
       // 404 = ticket genuinely doesn't exist; show the "not found" screen.
       if (t.status === 404) {
         setNotFound(true);
+        setForbidden(false);
+        setTicket(null);
+        setLoadError(null);
+        setLoading(false);
+        return;
+      }
+      // 403 = role-gated. Engineers see only their own tickets; if they tap
+      // a notification link for someone else's ticket, show a clear
+      // "access restricted" screen instead of a generic load error.
+      if (t.status === 403) {
+        setForbidden(true);
+        setNotFound(false);
         setTicket(null);
         setLoadError(null);
         setLoading(false);
@@ -194,6 +210,7 @@ export default function TicketDetailPage() {
       // Secondary fetches: log failures but still render what we have.
       // (Old code conflated these with a missing ticket too.)
       setNotFound(false);
+      setForbidden(false);
       setLoadError(null);
       setTicket(await t.json());
       setEvents(e.ok ? await e.json() : []);
@@ -739,6 +756,31 @@ export default function TicketDetailPage() {
             <Link href="/admin/tickets" className="mt-6 inline-block text-ink underline-offset-2 hover:underline">
               ← Back to tickets
             </Link>
+          </div>
+        </AdminShell>
+      );
+    }
+    if (forbidden) {
+      return (
+        <AdminShell>
+          <div className="mx-auto max-w-md px-6 py-20 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-surface-sunken">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M6 10V8a6 6 0 1 1 12 0v2M5 10h14v10H5z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <h1 className="mt-6 font-display text-2xl text-ink">Access restricted</h1>
+            <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
+              Ticket <code className="font-mono text-ink">{reference}</code> isn&apos;t assigned to you, so the details aren&apos;t visible from your account. Only the assigned engineer, managers, and owners can open it.
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-4">
+              <Link
+                href="/admin/tickets"
+                className="rounded-md border border-line bg-white px-4 py-2 text-[13px] text-ink transition-colors hover:border-ink hover:bg-surface-raised"
+              >
+                ← Your tickets
+              </Link>
+            </div>
           </div>
         </AdminShell>
       );
