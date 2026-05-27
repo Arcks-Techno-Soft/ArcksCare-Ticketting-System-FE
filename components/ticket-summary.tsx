@@ -9,6 +9,7 @@
  */
 import { motion } from "framer-motion";
 import type { TicketFormValues } from "@/lib/schema";
+import { BrandMark } from "@/components/brand-mark";
 
 type Props = {
   values: Partial<TicketFormValues>;
@@ -42,7 +43,7 @@ export function TicketSummary({ values, attachments = [] }: Props) {
         {/* Header bar */}
         <div className="flex items-center justify-between gap-3 border-b border-line bg-surface-raised px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="h-7 w-7 rounded-md bg-ink" />
+            <BrandMark />
             <div>
               <div className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
                 New support ticket

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { BrandMark } from "@/components/brand-mark";
 
 type SearchParams = { ref?: string; email?: string };
 
@@ -22,7 +23,7 @@ export default async function SuccessPage({
       <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-6">
         <header className="flex items-center justify-between py-5">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="h-7 w-7 rounded-md bg-ink" />
+            <BrandMark />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
               SK-POS Support
             </span>

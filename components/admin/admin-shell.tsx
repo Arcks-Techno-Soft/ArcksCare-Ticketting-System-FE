@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
+import { BrandMark } from "@/components/brand-mark";
 
 const ROLE_LABEL: Record<string, string> = {
   OWNER: "Owner",
@@ -73,7 +74,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         {/* Brand */}
         <div className="flex h-16 items-center border-b border-line px-4">
           <Link href="/admin/tickets" className="flex items-center gap-2.5 overflow-hidden">
-            <div className="h-7 w-7 shrink-0 rounded-md bg-ink" />
+            <BrandMark className="h-7 w-7 shrink-0" />
             {!collapsed && (
               <div className="flex items-baseline gap-2 overflow-hidden">
                 <span className="font-display text-[18px] font-semibold tracking-tight text-ink">

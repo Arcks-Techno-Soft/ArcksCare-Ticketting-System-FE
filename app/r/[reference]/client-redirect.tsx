@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { BrandMark } from "@/components/brand-mark";
 
 const ANDROID_PACKAGE = "com.arckstechnosoft.skposcare";
 
@@ -36,7 +37,7 @@ export function ClientRedirect({ reference }: { reference: string }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-white px-6">
       <div className="max-w-sm text-center">
-        <div className="mx-auto h-10 w-10 rounded-md bg-ink" />
+        <BrandMark className="mx-auto h-10 w-10" />
         <p className="mt-6 text-[12px] uppercase tracking-[0.18em] text-ink-subtle">
           Opening ticket
         </p>

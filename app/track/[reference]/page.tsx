@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandMark } from "@/components/brand-mark";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -131,7 +132,7 @@ function Header() {
     <header className="border-b border-line">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded-md bg-ink" />
+          <BrandMark />
           <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
             SK-POS Support
           </span>

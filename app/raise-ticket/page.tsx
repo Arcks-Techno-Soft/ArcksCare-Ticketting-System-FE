@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TicketForm } from "@/components/ticket-form";
+import { BrandMark } from "@/components/brand-mark";
 
 export const metadata = {
   title: "Raise a ticket — SK-POS Support",
@@ -13,7 +14,7 @@ export default function RaiseTicketPage() {
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="h-7 w-7 rounded-md bg-ink" />
+            <BrandMark />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
               SK-POS Support
             </span>
