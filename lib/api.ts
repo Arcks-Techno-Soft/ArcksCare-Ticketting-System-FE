@@ -16,7 +16,7 @@ export type TicketCreated = {
   reference: string;
   business_name: string;
   contact_name: string;
-  email: string;
+  email: string | null;
   phone: string;
   product_category: string;
   serial_number: string;
@@ -41,8 +41,12 @@ export async function submitTicket(
   files: File[] = []
 ): Promise<SubmitResult> {
   try {
+    // Drop email entirely when blank so the backend stores it as null
+    // (an empty string would fail email-format validation).
+    const { email, ...rest } = values;
+    const payload = email && email.trim() ? { ...rest, email } : rest;
     const fd = new FormData();
-    fd.append("payload", JSON.stringify(values));
+    fd.append("payload", JSON.stringify(payload));
     for (const f of files) fd.append("files", f, f.name);
 
     const res = await fetch(`${BASE}/api/v1/tickets`, {

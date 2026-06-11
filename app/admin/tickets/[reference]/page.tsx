@@ -37,7 +37,7 @@ type AdminTicket = {
   business_name: string;
   contact_name: string;
   phone: string;
-  email: string;
+  email: string | null;
   business_type: string;
   address_line1: string;
   address_line2?: string | null;
@@ -861,7 +861,7 @@ export default function TicketDetailPage() {
               <Row label="Business" value={`${ticket.business_name} · ${ticket.business_type}`} />
               <Row label="Contact" value={ticket.contact_name} />
               <Row label="Phone" value={<a className="hover:underline" href={`tel:${ticket.phone}`}>{ticket.phone}</a>} />
-              <Row label="Email" value={<a className="hover:underline" href={`mailto:${ticket.email}`}>{ticket.email}</a>} />
+              <Row label="Email" value={ticket.email ? <a className="hover:underline" href={`mailto:${ticket.email}`}>{ticket.email}</a> : "—"} />
             </DetailBlock>
 
             <DetailBlock title="Address">

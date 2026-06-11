@@ -105,7 +105,7 @@ export function TicketForm() {
     if (res.kind === "created") {
       const q = new URLSearchParams({
         ref: res.ticket.reference,
-        email: res.ticket.email,
+        email: res.ticket.email ?? "",
       });
       router.push(`/success?${q.toString()}`);
       return;
@@ -175,10 +175,10 @@ export function TicketForm() {
           </FieldGroup>
 
           <FieldGroup>
-            <Label htmlFor="email" required>Email</Label>
+            <Label htmlFor="email" hint="Optional">Email</Label>
             <Input
               id="email"
-              placeholder="you@business.com"
+              placeholder="you@business.com (optional)"
               type="email"
               {...register("email")}
             />

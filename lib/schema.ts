@@ -12,9 +12,24 @@ export const ticketSchema = z.object({
   phone: z
     .string()
     .trim()
-    .min(7, "Enter a valid phone number")
-    .regex(/^\+?[0-9\s\-()]+$/, "Only digits, +, -, spaces allowed"),
-  email: z.string().trim().email("Enter a valid email"),
+    .transform((v) => {
+      // Indian mobile: keep digits, strip a leading +91 / 91 / 0 trunk prefix.
+      let d = v.replace(/\D/g, "");
+      if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
+      else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+      return d;
+    })
+    .refine(
+      (d) => /^[6-9]\d{9}$/.test(d),
+      "Enter a valid 10-digit mobile number",
+    ),
+  // Optional — customer may not have an email address.
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email")
+    .optional()
+    .or(z.literal("")),
   business_type: z.enum(BUSINESS_TYPES, {
     errorMap: () => ({ message: "Select your business type" }),
   }),
