@@ -30,12 +30,18 @@ const EMPTY: FormState = {
 };
 
 type AssignMode = "later" | "engineer" | "self";
+type InvoiceMode = "later" | "enter";
+
+// Stored as the invoice number when the user defers entering one. The backend
+// requires a non-empty string, so this sentinel keeps the field valid.
+const INVOICE_DEFERRED = "To be added later";
 
 export default function NewInstallationPage() {
   const router = useRouter();
   const { ready, user, authFetch } = useAuth();
 
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>("later");
   const [assignMode, setAssignMode] = useState<AssignMode>("later");
   const [engineers, setEngineers] = useState<Engineer[]>([]);
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
@@ -77,7 +83,11 @@ export default function NewInstallationPage() {
     if (!form.business_category) return setError("Pick a category.");
     if (form.contact_name.trim().length < 2) return setError("Contact name is required.");
     if (form.phone.trim().length < 7) return setError("Phone number is required.");
-    if (!form.invoice_number.trim()) return setError("Invoice number is required.");
+    if (invoiceMode === "enter" && !form.invoice_number.trim())
+      return setError("Enter the invoice number, or choose “To be added later”.");
+
+    const invoiceValue =
+      invoiceMode === "later" ? INVOICE_DEFERRED : form.invoice_number.trim();
 
     const payload: Record<string, unknown> = {
       business_name: form.business_name.trim(),
@@ -85,7 +95,7 @@ export default function NewInstallationPage() {
       contact_name: form.contact_name.trim(),
       phone: form.phone.trim(),
       email: form.email.trim() || null,
-      invoice_number: form.invoice_number.trim(),
+      invoice_number: invoiceValue,
     };
 
     if (assignMode === "engineer") {
@@ -201,12 +211,27 @@ export default function NewInstallationPage() {
             </div>
             <div>
               <Label htmlFor="invoice" required>Invoice number</Label>
-              <Input
+              <Select
                 id="invoice"
-                value={form.invoice_number}
-                onChange={(e) => update("invoice_number", e.target.value)}
-                placeholder="INV-12345"
+                options={[INVOICE_DEFERRED, "Enter invoice number"]}
+                placeholder="Select…"
+                value={invoiceMode === "later" ? INVOICE_DEFERRED : "Enter invoice number"}
+                onChange={(e) => {
+                  const enter = e.target.value === "Enter invoice number";
+                  setInvoiceMode(enter ? "enter" : "later");
+                  if (!enter) update("invoice_number", "");
+                }}
               />
+              {invoiceMode === "enter" && (
+                <Input
+                  id="invoice_value"
+                  className="mt-2"
+                  value={form.invoice_number}
+                  onChange={(e) => update("invoice_number", e.target.value)}
+                  placeholder="INV-12345"
+                  aria-label="Invoice number"
+                />
+              )}
             </div>
           </div>
 
