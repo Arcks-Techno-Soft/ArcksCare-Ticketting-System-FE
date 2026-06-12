@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
@@ -52,6 +52,11 @@ export default function AdminTicketsPage() {
   const { ready, user, authFetch } = useAuth();
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
   const [total, setTotal] = useState(0);
+  // Per-status counts come from a dedicated aggregate endpoint, NOT from the
+  // currently-fetched page — otherwise selecting one status would zero out the
+  // counts on every other pill.
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [grandTotal, setGrandTotal] = useState(0);
   // First-load skeleton is distinct from background refetch — never flicker
   // skeletons over existing rows when filters change or auto-refresh fires.
   const [initialLoading, setInitialLoading] = useState(true);
@@ -117,6 +122,26 @@ export default function AdminTicketsPage() {
     }
   }, [authFetch, router, statusFilter, severityFilter, debouncedSearch, createdWithinDays, page, pageSize]);
 
+  // Aggregate counts for the status pills. Note: the status filter is
+  // intentionally NOT sent — every pill must show its count regardless of which
+  // status is currently selected.
+  const fetchCounts = useCallback(async () => {
+    const qs = new URLSearchParams();
+    if (severityFilter) qs.set("severity", severityFilter);
+    if (debouncedSearch.trim()) qs.set("search", debouncedSearch.trim());
+    if (createdWithinDays) qs.set("created_within_days", String(createdWithinDays));
+
+    try {
+      const res = await authFetch(`${API_BASE_URL}/api/v1/admin/tickets/counts?${qs.toString()}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { by_status: Record<string, number>; total: number };
+      setStatusCounts(data.by_status ?? {});
+      setGrandTotal(data.total ?? 0);
+    } catch {
+      // Non-fatal: pills just fall back to no badge. The list fetch surfaces errors.
+    }
+  }, [authFetch, severityFilter, debouncedSearch, createdWithinDays]);
+
   // Refetch on filter or page change. Skeleton only shows during the FIRST
   // load — subsequent fetches leave the current rows in place while loading.
   useEffect(() => {
@@ -124,18 +149,24 @@ export default function AdminTicketsPage() {
     fetchTickets();
   }, [user, fetchTickets]);
 
+  // Counts refresh whenever the non-status filters change (independent of the
+  // selected status and pagination).
+  useEffect(() => {
+    if (!user) return;
+    fetchCounts();
+  }, [user, fetchCounts]);
+
   // Auto-refresh interval (only when authed and tab is visible-ish)
   useEffect(() => {
     if (!user) return;
-    const i = setInterval(fetchTickets, REFRESH_INTERVAL_MS);
+    const i = setInterval(() => {
+      fetchTickets();
+      fetchCounts();
+    }, REFRESH_INTERVAL_MS);
     return () => clearInterval(i);
-  }, [user, fetchTickets]);
+  }, [user, fetchTickets, fetchCounts]);
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const t of tickets) c[t.status] = (c[t.status] ?? 0) + 1;
-    return c;
-  }, [tickets]);
+  const counts = statusCounts;
 
   if (!ready || !user) return null;
 
@@ -171,7 +202,7 @@ export default function AdminTicketsPage() {
                   : "border-line bg-white text-ink hover:border-ink-soft"
               }`}
             >
-              All · {total}
+              All · {grandTotal}
             </button>
             {STATUSES.map((s) => {
               const active = statusFilter === s;
@@ -231,7 +262,10 @@ export default function AdminTicketsPage() {
           </div>
           <button
             type="button"
-            onClick={() => fetchTickets()}
+            onClick={() => {
+              fetchTickets();
+              fetchCounts();
+            }}
             className="rounded-xl2 border border-line bg-white px-5 py-3.5 text-[13.5px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
           >
             Refresh now
