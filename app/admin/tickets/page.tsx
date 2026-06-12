@@ -57,6 +57,10 @@ export default function AdminTicketsPage() {
   // counts on every other pill.
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [grandTotal, setGrandTotal] = useState(0);
+  // True once the aggregate endpoint answers successfully. While false (e.g.
+  // backend not yet deployed) we fall back to counts derived from the loaded
+  // page so the pills never regress to blank/zero.
+  const [countsAvailable, setCountsAvailable] = useState(false);
   // First-load skeleton is distinct from background refetch — never flicker
   // skeletons over existing rows when filters change or auto-refresh fires.
   const [initialLoading, setInitialLoading] = useState(true);
@@ -133,12 +137,18 @@ export default function AdminTicketsPage() {
 
     try {
       const res = await authFetch(`${API_BASE_URL}/api/v1/admin/tickets/counts?${qs.toString()}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        // Endpoint missing/unavailable — keep the client-side fallback active.
+        setCountsAvailable(false);
+        return;
+      }
       const data = (await res.json()) as { by_status: Record<string, number>; total: number };
       setStatusCounts(data.by_status ?? {});
       setGrandTotal(data.total ?? 0);
+      setCountsAvailable(true);
     } catch {
-      // Non-fatal: pills just fall back to no badge. The list fetch surfaces errors.
+      // Non-fatal: fall back to client-side counts. The list fetch surfaces errors.
+      setCountsAvailable(false);
     }
   }, [authFetch, severityFilter, debouncedSearch, createdWithinDays]);
 
@@ -166,7 +176,12 @@ export default function AdminTicketsPage() {
     return () => clearInterval(i);
   }, [user, fetchTickets, fetchCounts]);
 
-  const counts = statusCounts;
+  // Prefer the aggregate endpoint. If it isn't available, derive counts from the
+  // loaded page (matches the pre-fix behaviour) rather than showing zeros.
+  const clientCounts: Record<string, number> = {};
+  for (const t of tickets) clientCounts[t.status] = (clientCounts[t.status] ?? 0) + 1;
+  const counts = countsAvailable ? statusCounts : clientCounts;
+  const allCount = countsAvailable ? grandTotal : total;
 
   if (!ready || !user) return null;
 
@@ -202,7 +217,7 @@ export default function AdminTicketsPage() {
                   : "border-line bg-white text-ink hover:border-ink-soft"
               }`}
             >
-              All · {grandTotal}
+              All · {allCount}
             </button>
             {STATUSES.map((s) => {
               const active = statusFilter === s;
