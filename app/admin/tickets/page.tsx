@@ -22,7 +22,6 @@ type AdminTicket = {
   severity: string;
   status: string;
   warranty_status: string;
-  assigned_engineer?: { id: number; name: string } | null;
   created_at: string;
 };
 
@@ -289,17 +288,7 @@ export default function AdminTicketsPage() {
                       <span className="text-ink">{t.issue_category}</span>
                     </Td>
                     <Td><SeverityBadge severity={t.severity} /></Td>
-                    <Td>
-                      <StatusBadge status={t.status} />
-                      {t.assigned_engineer && (
-                        <div
-                          className="mt-1 max-w-[150px] truncate text-[12px] text-ink-subtle"
-                          title={`Assigned to ${t.assigned_engineer.name}`}
-                        >
-                          {t.assigned_engineer.name}
-                        </div>
-                      )}
-                    </Td>
+                    <Td><StatusBadge status={t.status} /></Td>
                     <Td><WarrantyBadge status={t.warranty_status} /></Td>
                     <Td>
                       <span className="text-ink-muted" title={fmtIst(t.created_at)}>
