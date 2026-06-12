@@ -11,6 +11,7 @@ import {
   BarChart3,
   LogOut,
   Wrench,
+  PlusCircle,
   Menu,
   X,
 } from "lucide-react";
@@ -38,6 +39,12 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/admin/tickets", icon: LayoutDashboard, matchPrefix: "/admin/tickets" },
+  {
+    label: "New Ticket",
+    href: "/admin/tickets/new",
+    icon: PlusCircle,
+    matchPrefix: "/admin/tickets/new",
+  },
   {
     label: "New Installation",
     labelByRole: { ENGINEER: "Installations" },
@@ -67,6 +74,17 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const visibleItems = NAV_ITEMS.filter(
     (item) => !item.roles || (user && item.roles.includes(user.role))
   );
+
+  // Longest-prefix wins so /admin/tickets/new highlights "New Ticket" rather
+  // than "Dashboard" (whose prefix /admin/tickets also matches).
+  const activeHref = visibleItems
+    .filter((item) => {
+      const prefix = item.matchPrefix ?? item.href;
+      return pathname === item.href || pathname.startsWith(prefix);
+    })
+    .sort(
+      (a, b) => (b.matchPrefix ?? b.href).length - (a.matchPrefix ?? a.href).length
+    )[0]?.href;
 
   // Label/brand text is hidden only when the desktop rail is collapsed; on
   // mobile the drawer is always full-width so labels stay visible.
@@ -123,9 +141,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <ul className="space-y-1">
             {visibleItems.map((item) => {
               const Icon = item.icon;
-              const active = item.matchPrefix
-                ? pathname.startsWith(item.matchPrefix)
-                : pathname === item.href;
+              const active = item.href === activeHref;
               const label = (user && item.labelByRole?.[user.role]) ?? item.label;
               return (
                 <li key={item.href}>

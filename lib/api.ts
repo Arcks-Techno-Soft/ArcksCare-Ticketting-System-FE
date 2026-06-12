@@ -38,7 +38,11 @@ export type SubmitResult =
  */
 export async function submitTicket(
   values: TicketFormValues,
-  files: File[] = []
+  files: File[] = [],
+  // Optional authed fetcher (e.g. authFetch). When supplied, the request
+  // carries the staff member's JWT so the backend records them as `raised_by`
+  // — this is how a staff-opened ticket gets the "Opened by <name>" tag.
+  fetcher: typeof fetch = fetch
 ): Promise<SubmitResult> {
   try {
     // Drop email entirely when blank so the backend stores it as null
@@ -49,7 +53,7 @@ export async function submitTicket(
     fd.append("payload", JSON.stringify(payload));
     for (const f of files) fd.append("files", f, f.name);
 
-    const res = await fetch(`${BASE}/api/v1/tickets`, {
+    const res = await fetcher(`${BASE}/api/v1/tickets`, {
       method: "POST",
       body: fd,
       // NOTE: do NOT set Content-Type - the browser sets the correct

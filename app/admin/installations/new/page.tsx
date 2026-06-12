@@ -52,12 +52,12 @@ export default function NewInstallationPage() {
     if (!ready) return;
     if (!user) {
       router.replace("/admin/login");
-      return;
-    }
-    if (user.role !== "OWNER" && user.role !== "MANAGER") {
-      router.replace("/admin/installations");
     }
   }, [ready, user, router]);
+
+  // Engineers can open installations but not pre-assign them — their
+  // installation lands in the admin queue tagged "Opened by <name>".
+  const canAssign = user?.role === "OWNER" || user?.role === "MANAGER";
 
   useEffect(() => {
     if (!user) return;
@@ -133,7 +133,6 @@ export default function NewInstallationPage() {
   };
 
   if (!ready || !user) return null;
-  if (user.role !== "OWNER" && user.role !== "MANAGER") return null;
 
   return (
     <AdminShell>
@@ -235,7 +234,8 @@ export default function NewInstallationPage() {
             </div>
           </div>
 
-          {/* Assignment */}
+          {/* Assignment — owners/managers only; engineer installs go to the queue */}
+          {canAssign && (
           <div className="rounded-xl2 border border-line bg-white p-5">
             <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
               Assignment
@@ -277,6 +277,7 @@ export default function NewInstallationPage() {
               </div>
             )}
           </div>
+          )}
 
           <FieldError message={error ?? undefined} />
 

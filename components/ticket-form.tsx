@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { ticketSchema, type TicketFormValues } from "@/lib/schema";
-import { submitTicket, type DuplicateError } from "@/lib/api";
+import { submitTicket, type DuplicateError, type SubmitResult, type TicketCreated } from "@/lib/api";
 import {
   BUSINESS_TYPES,
   INDIAN_STATES,
@@ -39,7 +39,16 @@ const AddressMap = dynamic(() => import("@/components/address-map"), {
 
 type Step = "form" | "submitting";
 
-export function TicketForm() {
+type TicketFormProps = {
+  /** Override how the ticket is submitted (e.g. an authed staff submission). */
+  submit?: (values: TicketFormValues, files: File[]) => Promise<SubmitResult>;
+  /** Called on success instead of the default redirect to /success. */
+  onCreated?: (ticket: TicketCreated) => void;
+  /** Optional copy for the submit button (defaults to "Submit ticket"). */
+  submitLabel?: string;
+};
+
+export function TicketForm({ submit = submitTicket, onCreated, submitLabel }: TicketFormProps = {}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("form");
   const [duplicate, setDuplicate] = useState<DuplicateError | null>(null);
@@ -101,8 +110,12 @@ export function TicketForm() {
     setDuplicate(null);
     setServerError(null);
     setStep("submitting");
-    const res = await submitTicket(values, attachments.map((a) => a.file));
+    const res = await submit(values, attachments.map((a) => a.file));
     if (res.kind === "created") {
+      if (onCreated) {
+        onCreated(res.ticket);
+        return;
+      }
       const q = new URLSearchParams({
         ref: res.ticket.reference,
         email: res.ticket.email ?? "",
@@ -399,7 +412,7 @@ export function TicketForm() {
           size="lg"
           loading={isSubmitting || step === "submitting"}
         >
-          {isSubmitting || step === "submitting" ? "Submitting…" : "Submit ticket"}
+          {isSubmitting || step === "submitting" ? "Submitting…" : (submitLabel ?? "Submit ticket")}
           {!(isSubmitting || step === "submitting") && (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
               <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />

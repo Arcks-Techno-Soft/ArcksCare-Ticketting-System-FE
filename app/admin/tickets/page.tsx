@@ -22,6 +22,7 @@ type AdminTicket = {
   severity: string;
   status: string;
   warranty_status: string;
+  raised_by?: { id: number; name: string; role?: string } | null;
   assigned_engineer?: { id: number; name: string } | null;
   created_at: string;
 };
@@ -329,6 +330,11 @@ export default function AdminTicketsPage() {
                       <div className="text-[12px] text-ink-subtle">
                         {t.city}, {t.state}
                       </div>
+                      {t.raised_by && (
+                        <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
+                          Opened by {t.raised_by.name}
+                        </div>
+                      )}
                     </Td>
                     <Td>
                       <div className="text-ink">{t.product_category}</div>
