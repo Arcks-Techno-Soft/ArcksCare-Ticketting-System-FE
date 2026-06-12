@@ -177,7 +177,7 @@ export default function UsersPage() {
 
   return (
     <AdminShell>
-      <section className="mx-auto max-w-6xl px-6 py-10">
+      <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="border-b border-line pb-6">
           <p className="text-[12px] uppercase tracking-[0.18em] text-ink-subtle">
             Settings · Users
@@ -337,8 +337,8 @@ export default function UsersPage() {
         {/* Users table */}
         <div className="mt-10">
           <h2 className="text-[15px] font-medium text-ink">All users</h2>
-          <div className="mt-4 overflow-hidden rounded-xl2 border border-line shadow-soft">
-            <table className="w-full text-left text-[13.5px]">
+          <div className="mt-4 overflow-x-auto rounded-xl2 border border-line shadow-soft">
+            <table className="w-full min-w-[640px] text-left text-[13.5px]">
               <thead className="bg-surface-raised">
                 <tr className="text-[11px] uppercase tracking-[0.12em] text-ink-subtle">
                   <Th>Name</Th>

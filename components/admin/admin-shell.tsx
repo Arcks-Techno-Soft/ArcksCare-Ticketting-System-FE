@@ -11,6 +11,8 @@ import {
   BarChart3,
   LogOut,
   Wrench,
+  Menu,
+  X,
 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
@@ -52,7 +54,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  // Desktop-only collapse of the rail to icons.
   const [collapsed, setCollapsed] = useState(false);
+  // Mobile-only off-canvas drawer.
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -63,29 +68,54 @@ export function AdminShell({ children }: { children: ReactNode }) {
     (item) => !item.roles || (user && item.roles.includes(user.role))
   );
 
+  // Label/brand text is hidden only when the desktop rail is collapsed; on
+  // mobile the drawer is always full-width so labels stay visible.
+  const labelHiddenClass = collapsed ? "lg:hidden" : "";
+
   return (
     <div className="flex min-h-screen bg-white">
-      {/* Sidebar */}
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+        />
+      )}
+
+      {/* Sidebar: off-canvas drawer on mobile, sticky rail on desktop */}
       <aside
-        className={`sticky top-0 flex h-screen flex-col border-r border-line bg-white transition-[width] duration-200 ${
-          collapsed ? "w-16" : "w-60"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col border-r border-line bg-white transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:translate-x-0 lg:transition-[width] ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        } ${collapsed ? "lg:w-16" : "lg:w-60"}`}
       >
         {/* Brand */}
-        <div className="flex h-16 items-center border-b border-line px-4">
-          <Link href="/admin/tickets" className="flex items-center gap-2.5 overflow-hidden">
+        <div className="flex h-16 items-center justify-between border-b border-line px-4">
+          <Link
+            href="/admin/tickets"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-2.5 overflow-hidden"
+          >
             <BrandMark className="h-7 w-7 shrink-0" />
-            {!collapsed && (
-              <div className="flex items-baseline gap-2 overflow-hidden">
-                <span className="font-display text-[18px] font-semibold tracking-tight text-ink">
-                  SK-POS Support
-                </span>
-                <span className="text-[10.5px] uppercase tracking-[0.16em] text-ink-subtle">
-                  Admin
-                </span>
-              </div>
-            )}
+            <div className={`flex items-baseline gap-2 overflow-hidden ${labelHiddenClass}`}>
+              <span className="font-display text-[18px] font-semibold tracking-tight text-ink">
+                SK-POS Support
+              </span>
+              <span className="text-[10.5px] uppercase tracking-[0.16em] text-ink-subtle">
+                Admin
+              </span>
+            </div>
           </Link>
+          {/* Close (mobile only) */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center justify-center rounded-md p-1.5 text-ink-subtle hover:bg-surface-raised hover:text-ink lg:hidden"
+            aria-label="Close menu"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Nav */}
@@ -101,6 +131,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    onClick={() => setMobileOpen(false)}
                     className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                       active
                         ? "bg-ink text-white"
@@ -110,9 +141,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
                   >
                     <Icon
                       size={18}
-                      className={active ? "text-white" : "text-ink-subtle group-hover:text-ink"}
+                      className={`shrink-0 ${active ? "text-white" : "text-ink-subtle group-hover:text-ink"}`}
                     />
-                    {!collapsed && <span>{label}</span>}
+                    <span className={labelHiddenClass}>{label}</span>
                   </Link>
                 </li>
               );
@@ -120,11 +151,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </ul>
         </nav>
 
-        {/* Collapse toggle */}
+        {/* Collapse toggle (desktop only) */}
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="flex items-center justify-center border-t border-line py-2 text-ink-subtle hover:bg-surface-raised hover:text-ink"
+          className="hidden items-center justify-center border-t border-line py-2 text-ink-subtle hover:bg-surface-raised hover:text-ink lg:flex"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -134,7 +165,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-end gap-3 border-b border-line bg-white px-6">
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-end gap-3 border-b border-line bg-white px-4 sm:px-6">
+          {/* Hamburger (mobile only) */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="mr-auto flex items-center justify-center rounded-md p-2 text-ink hover:bg-surface-raised lg:hidden"
+            aria-label="Open menu"
+          >
+            <Menu size={20} />
+          </button>
           {user && (
             <>
               <div className="text-right leading-tight">
@@ -149,7 +189,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-[12.5px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
               >
                 <LogOut size={14} />
-                Sign out
+                <span className="hidden sm:inline">Sign out</span>
               </button>
             </>
           )}

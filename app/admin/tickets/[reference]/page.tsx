@@ -57,6 +57,7 @@ type AdminTicket = {
   created_at: string;
   attachments: { id: number; filename: string; storage_url: string; size_bytes: number; content_type: string }[];
 
+  raised_by?: Engineer | null;
   acknowledged_by?: Engineer | null;
   acknowledged_at?: string | null;
   assigned_by?: Engineer | null;
@@ -817,7 +818,7 @@ export default function TicketDetailPage() {
 
   return (
     <AdminShell>
-      <section className="mx-auto max-w-7xl px-6 py-10">
+      <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-4">
           <Link
@@ -862,6 +863,19 @@ export default function TicketDetailPage() {
               <Row label="Contact" value={ticket.contact_name} />
               <Row label="Phone" value={<a className="hover:underline" href={`tel:${ticket.phone}`}>{ticket.phone}</a>} />
               <Row label="Email" value={ticket.email ? <a className="hover:underline" href={`mailto:${ticket.email}`}>{ticket.email}</a> : "—"} />
+              {ticket.raised_by && (
+                <Row
+                  label="Raised by"
+                  value={
+                    <span>
+                      {ticket.raised_by.name}
+                      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-blue-700">
+                        {ticket.raised_by.role === "ENGINEER" ? "Engineer" : ticket.raised_by.role}
+                      </span>
+                    </span>
+                  }
+                />
+              )}
             </DetailBlock>
 
             <DetailBlock title="Address">

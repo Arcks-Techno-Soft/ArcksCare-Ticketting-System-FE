@@ -22,7 +22,7 @@ export default function SettingsPage() {
 
   return (
     <AdminShell>
-      <section className="mx-auto max-w-5xl px-6 py-10">
+      <section className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="border-b border-line pb-6">
           <p className="text-[12px] uppercase tracking-[0.18em] text-ink-subtle">Settings</p>
           <h1 className="mt-2 font-display text-4xl font-medium tracking-tightest text-ink">

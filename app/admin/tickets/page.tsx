@@ -140,7 +140,7 @@ export default function AdminTicketsPage() {
 
   return (
     <AdminShell>
-      <section className="mx-auto max-w-7xl px-6 py-10">
+      <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="flex items-end justify-between gap-4 border-b border-line pb-6">
           <div>
             <p className="text-[12px] uppercase tracking-[0.18em] text-ink-subtle">
@@ -238,8 +238,8 @@ export default function AdminTicketsPage() {
         </div>
 
         {/* Table */}
-        <div className="mt-8 overflow-hidden rounded-xl2 border border-line shadow-soft">
-          <table className="w-full text-left text-[13.5px]">
+        <div className="mt-8 overflow-x-auto rounded-xl2 border border-line shadow-soft">
+          <table className="w-full min-w-[760px] text-left text-[13.5px]">
             <thead className="bg-surface-raised">
               <tr className="text-[11px] uppercase tracking-[0.12em] text-ink-subtle">
                 <Th>Reference</Th>
