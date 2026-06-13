@@ -1249,6 +1249,9 @@ function ActionPanel(props: {
 
   const canAcknowledge = canModerate && ticket.status === "OPEN";
   const canAssign = canModerate && ["ACKNOWLEDGED", "ASSIGNED", "ACCEPTED"].includes(ticket.status);
+  // Warranty must be decided before assigning. Mirrors the backend gate so the
+  // user sees why assigning is blocked instead of hitting a 400.
+  const warrantyUnknown = ticket.warranty_status === "UNKNOWN";
 
   // Engineer-style actions (accept / start / resolve / sign) are available to
   // whoever the ticket is currently assigned to — engineer, owner, or manager
@@ -1369,11 +1372,18 @@ function ActionPanel(props: {
             matchDistrict={ticket.city}
             placeholder="Choose engineer"
           />
+          {warrantyUnknown && (
+            <p className="mt-3 rounded-xl2 border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">
+              Set the warranty status (Under / Out of Warranty) before assigning
+              this ticket.
+            </p>
+          )}
           <Button
             type="button"
             variant="primary"
             size="md"
             loading={acting === "assign"}
+            disabled={warrantyUnknown}
             onClick={onAssign}
             className="mt-3 w-full"
           >
@@ -1384,7 +1394,7 @@ function ActionPanel(props: {
             <button
               type="button"
               onClick={onSelfAssign}
-              disabled={acting === "self-assign"}
+              disabled={acting === "self-assign" || warrantyUnknown}
               className="mt-2 block w-full rounded-md px-2 py-1.5 text-center text-[12.5px] text-ink-muted hover:text-ink transition-colors disabled:opacity-50"
             >
               {acting === "self-assign" ? "Assigning to you…" : "or, assign to me"}
