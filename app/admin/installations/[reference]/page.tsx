@@ -87,6 +87,8 @@ export default function InstallationDetailPage() {
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
   const [newNote, setNewNote] = useState("");
   const [noteImages, setNoteImages] = useState<PickedImage[]>([]);
+  const [editingInvoice, setEditingInvoice] = useState(false);
+  const [invoiceDraft, setInvoiceDraft] = useState("");
 
   useEffect(() => {
     if (ready && !user) router.replace("/admin/login");
@@ -153,8 +155,10 @@ export default function InstallationDetailPage() {
         throw new Error(msg);
       }
       await fetchAll();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
+      return false;
     } finally {
       setActing(null);
     }
@@ -337,6 +341,23 @@ export default function InstallationDetailPage() {
     isAssignee && inst.status === "COMPLETED" && customerSigned && !engineerSigned;
   const canDownloadPdf =
     canModerate && inst.status === "CLOSED" && !!inst.resolution?.pdf_generated_at;
+  // Invoice is editable by the assignee / Owner / Manager until the
+  // installation is CLOSED (after which it's frozen into the signed PDF).
+  const canEditInvoice = (canModerate || isAssignee) && inst.status !== "CLOSED";
+
+  const startEditInvoice = () => {
+    setInvoiceDraft(inst.invoice_number);
+    setEditingInvoice(true);
+  };
+  const saveInvoice = async () => {
+    const v = invoiceDraft.trim();
+    if (!v) {
+      setError("Invoice number cannot be empty.");
+      return;
+    }
+    const ok = await callAction("invoice", "/invoice", "PATCH", { invoice_number: v });
+    if (ok) setEditingInvoice(false);
+  };
 
   return (
     <AdminShell>
@@ -400,7 +421,60 @@ export default function InstallationDetailPage() {
                   }
                 />
               )}
-              <Row label="Invoice #" value={<code className="font-mono text-[13.5px]">{inst.invoice_number}</code>} />
+              <Row
+                label="Invoice #"
+                value={
+                  editingInvoice ? (
+                    <div className="flex flex-col gap-2">
+                      <input
+                        value={invoiceDraft}
+                        onChange={(e) => setInvoiceDraft(e.target.value)}
+                        maxLength={80}
+                        autoFocus
+                        placeholder="Invoice number"
+                        className="w-full rounded-xl2 border border-line bg-white px-3 py-2 text-[14px] text-ink transition-all hover:border-line-strong focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceDraft("To be added later")}
+                        className="self-start text-[12px] text-ink-muted hover:text-ink transition-colors"
+                      >
+                        Set &ldquo;To be added later&rdquo;
+                      </button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          loading={acting === "invoice"}
+                          onClick={saveInvoice}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setEditingInvoice(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="flex items-center gap-3">
+                      <code className="font-mono text-[13.5px]">{inst.invoice_number}</code>
+                      {canEditInvoice && (
+                        <button
+                          type="button"
+                          onClick={startEditInvoice}
+                          className="text-[12.5px] font-medium text-ink underline-offset-2 hover:underline"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </span>
+                  )
+                }
+              />
             </DetailBlock>
 
             <DetailBlock title="Assignment">
