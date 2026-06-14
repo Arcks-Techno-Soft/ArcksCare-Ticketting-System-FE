@@ -61,6 +61,16 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Legacy compatibility: the backend still issues role "OWNER" for un-migrated
+// admin accounts. Treat it as ADMIN everywhere in the UI until those accounts
+// are migrated.
+function normalizeAuth(a: StoredAuth | null): StoredAuth | null {
+  if (a?.user && (a.user.role as string) === "OWNER") {
+    return { ...a, user: { ...a.user, role: "ADMIN" } };
+  }
+  return a;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<StoredAuth | null>(null);
   const [ready, setReady] = useState(false);
@@ -87,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (raw) {
         const parsed = JSON.parse(raw) as StoredAuth;
         if (new Date(parsed.expires_at).getTime() > Date.now()) {
-          setAuth(parsed);
+          setAuth(normalizeAuth(parsed));
         } else {
           sessionStorage.removeItem(STORAGE_KEY);
         }
@@ -99,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const persist = (next: StoredAuth | null) => {
+    next = normalizeAuth(next);
     setAuth(next);
     if (typeof window === "undefined") return;
     if (next) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
