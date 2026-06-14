@@ -53,9 +53,9 @@ export default function InstallationsListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Owners and managers only — engineers see their assigned installs in tickets
+  // Admins and managers only — engineers see their assigned installs in tickets
   // dashboard equivalent; we still allow them to view but the page is most
-  // useful to Owner/Manager.
+  // useful to Admin/Manager.
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");

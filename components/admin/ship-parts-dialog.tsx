@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Ship Parts dialog — Owner / Manager / assigned engineer use this to
+ * Ship Parts dialog — Admin / Manager / assigned engineer use this to
  * record a courier shipment of spare parts to the worksite.
  *
  * Fields:

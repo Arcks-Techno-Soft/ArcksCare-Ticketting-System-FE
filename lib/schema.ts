@@ -61,7 +61,7 @@ export const ticketSchema = z.object({
     errorMap: () => ({ message: "Select an issue category" }),
   }),
   // NOTE: severity is intentionally not collected from the customer. The
-  // backend defaults it to MEDIUM; Owner/Manager triage and adjust later.
+  // backend defaults it to MEDIUM; Admin/Manager triage and adjust later.
   description: z
     .string()
     .trim()

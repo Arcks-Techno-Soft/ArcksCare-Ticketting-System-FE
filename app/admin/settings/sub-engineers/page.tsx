@@ -35,7 +35,7 @@ export default function SubEngineerRosterPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "OWNER") router.replace("/admin/tickets");
+    else if (user.role !== "ADMIN") router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   const fetchRoster = useCallback(async () => {
@@ -59,7 +59,7 @@ export default function SubEngineerRosterPage() {
   }, [authFetch, router]);
 
   useEffect(() => {
-    if (user?.role === "OWNER") fetchRoster();
+    if (user?.role === "ADMIN") fetchRoster();
   }, [user, fetchRoster]);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -126,7 +126,7 @@ export default function SubEngineerRosterPage() {
     }
   };
 
-  if (!ready || !user || user.role !== "OWNER") return null;
+  if (!ready || !user || user.role !== "ADMIN") return null;
 
   return (
     <AdminShell>

@@ -329,7 +329,7 @@ export default function InstallationDetailPage() {
     );
   }
 
-  const canModerate = user.role === "OWNER" || user.role === "MANAGER";
+  const canModerate = user.role === "ADMIN" || user.role === "MANAGER";
   const isAssignee = inst.assigned_engineer?.id === user.id;
   const canAssign = canModerate && (inst.status === "NEW" || inst.status === "ASSIGNED");
   const canAddNote = (canModerate || isAssignee) && inst.status === "ASSIGNED";
@@ -341,7 +341,7 @@ export default function InstallationDetailPage() {
     isAssignee && inst.status === "COMPLETED" && customerSigned && !engineerSigned;
   const canDownloadPdf =
     canModerate && inst.status === "CLOSED" && !!inst.resolution?.pdf_generated_at;
-  // Invoice is editable by the assignee / Owner / Manager until the
+  // Invoice is editable by the assignee / Admin / Manager until the
   // installation is CLOSED (after which it's frozen into the signed PDF).
   const canEditInvoice = (canModerate || isAssignee) && inst.status !== "CLOSED";
 

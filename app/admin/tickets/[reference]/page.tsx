@@ -813,8 +813,8 @@ export default function TicketDetailPage() {
     );
   }
 
-  const canModerate = user.role === "OWNER" || user.role === "MANAGER";
-  const isOwner = user.role === "OWNER";
+  const canModerate = user.role === "ADMIN" || user.role === "MANAGER";
+  const isAdmin = user.role === "ADMIN";
 
   return (
     <AdminShell>
@@ -951,7 +951,7 @@ export default function TicketDetailPage() {
               currentUserId={user.id}
               currentUserRole={user.role}
               canModerate={canModerate}
-              isOwner={isOwner}
+              isAdmin={isAdmin}
               hasUndeliveredShipments={shipments.some((s) => !s.delivered_at)}
               acting={acting}
               actionError={actionError}
@@ -979,7 +979,7 @@ export default function TicketDetailPage() {
               shipments={shipments}
               canShip={
                 ticket.status !== "CLOSED" &&
-                (user.role === "OWNER" ||
+                (user.role === "ADMIN" ||
                   user.role === "MANAGER" ||
                   ticket.assigned_engineer?.id === user.id)
               }
@@ -1003,7 +1003,7 @@ export default function TicketDetailPage() {
                 // Invoice freezes at RESOLVED — no edits by anyone after that,
                 // since the figures travel into the signed resolution PDF.
                 ticket.status === "RESOLVING" &&
-                (user.role === "OWNER" ||
+                (user.role === "ADMIN" ||
                   user.role === "MANAGER" ||
                   ticket.assigned_engineer?.id === user.id)
               }
@@ -1022,7 +1022,7 @@ export default function TicketDetailPage() {
             <SubEngineers
               items={ticket.sub_engineers ?? []}
               canManage={
-                (user.role === "OWNER" || user.role === "MANAGER" || ticket.assigned_engineer?.id === user.id) &&
+                (user.role === "ADMIN" || user.role === "MANAGER" || ticket.assigned_engineer?.id === user.id) &&
                 ticket.status !== "OPEN"
               }
               defaultLocation={ticket.city}
@@ -1187,7 +1187,7 @@ function ActionPanel(props: {
   currentUserId: number;
   currentUserRole: string;
   canModerate: boolean;
-  isOwner: boolean;
+  isAdmin: boolean;
   hasUndeliveredShipments: boolean;
   acting: string | null;
   actionError: string | null;
@@ -1212,7 +1212,7 @@ function ActionPanel(props: {
   onRegenPdf: () => void | Promise<void>;
 }) {
   const {
-    ticket, engineers, currentUserId, currentUserRole, canModerate, isOwner,
+    ticket, engineers, currentUserId, currentUserRole, canModerate, isAdmin,
     hasUndeliveredShipments,
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
@@ -1261,7 +1261,7 @@ function ActionPanel(props: {
   const canStart = isMyTicket && ticket.status === "ACCEPTED";
   const canResolve = isMyTicket && ticket.status === "RESOLVING";
 
-  // Sub-engineers can be added once ticket is acknowledged, by assignee / Owner / Manager.
+  // Sub-engineers can be added once ticket is acknowledged, by assignee / Admin / Manager.
   const isAssignee = ticket.assigned_engineer?.id === currentUserId;
   const canManageSubEngineers =
     (canModerate || isAssignee) &&
@@ -1295,12 +1295,12 @@ function ActionPanel(props: {
     !customerSigned &&
     !engineerSigned;
   const canDownloadPdf =
-    (isOwner || currentUserRole === "MANAGER" || isMyTicket) &&
+    (isAdmin || currentUserRole === "MANAGER" || isMyTicket) &&
     ticket.status === "CLOSED" &&
     !!ticket.resolution?.pdf_generated_at;
 
   const hasAnyAction =
-    canAcknowledge || canAssign || isOwner || canAccept || canStart || canResolve ||
+    canAcknowledge || canAssign || isAdmin || canAccept || canStart || canResolve ||
     canCaptureCustomer || canEngineerSign || canGenerateFieldLink || canDownloadPdf ||
     (ticket.status === "RESOLVED" && !!ticket.resolution);
   if (!hasAnyAction) {
@@ -1688,7 +1688,7 @@ function ActionPanel(props: {
         </p>
       )}
 
-      {/* Severity — Owner + Manager */}
+      {/* Severity — Admin + Manager */}
       {canModerate && (
         <div className="border-t border-line pt-5">
           <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">Severity</p>
@@ -1724,7 +1724,7 @@ function ActionPanel(props: {
         <div className="border-t border-line pt-5">
           <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">Warranty</p>
           <p className="mt-1 text-[12.5px] text-ink-muted">
-            Owner or Manager can change this.
+            Admin or Manager can change this.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {WARRANTY_OPTIONS.map((w) => {
