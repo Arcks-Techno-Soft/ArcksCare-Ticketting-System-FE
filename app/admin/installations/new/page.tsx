@@ -57,7 +57,7 @@ export default function NewInstallationPage() {
 
   // Engineers can open installations but not pre-assign them — their
   // installation lands in the admin queue tagged "Opened by <name>".
-  const canAssign = user?.role === "OWNER" || user?.role === "MANAGER";
+  const canAssign = user?.role === "ADMIN" || user?.role === "MANAGER";
 
   useEffect(() => {
     if (!user) return;

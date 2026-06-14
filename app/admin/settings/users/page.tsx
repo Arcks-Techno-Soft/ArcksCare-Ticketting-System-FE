@@ -22,14 +22,14 @@ type UserRow = {
   last_name?: string | null;
   phone?: string | null;
   email?: string | null;
-  role: "OWNER" | "MANAGER" | "ENGINEER";
+  role: "ADMIN" | "MANAGER" | "ENGINEER";
   district?: string | null;
   active: boolean;
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  OWNER: "Owner",
-  MANAGER: "Admin",
+  ADMIN: "Admin",
+  MANAGER: "Manager",
   ENGINEER: "Engineer",
 };
 
@@ -68,7 +68,7 @@ export default function UsersPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "OWNER") router.replace("/admin/tickets");
+    else if (user.role !== "ADMIN") router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   const fetchUsers = useCallback(async () => {
@@ -90,7 +90,7 @@ export default function UsersPage() {
   }, [authFetch, router]);
 
   useEffect(() => {
-    if (user?.role === "OWNER") fetchUsers();
+    if (user?.role === "ADMIN") fetchUsers();
   }, [user, fetchUsers]);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -173,7 +173,7 @@ export default function UsersPage() {
     if (res.ok) fetchUsers();
   };
 
-  if (!ready || !user || user.role !== "OWNER") return null;
+  if (!ready || !user || user.role !== "ADMIN") return null;
 
   return (
     <AdminShell>
@@ -186,7 +186,7 @@ export default function UsersPage() {
             Users &amp; roles
           </h1>
           <p className="mt-1 text-[13.5px] text-ink-muted">
-            Owner-only. You choose the username and password — they take effect immediately.
+            Admin-only. You choose the username and password — they take effect immediately.
           </p>
         </div>
 
@@ -385,7 +385,7 @@ export default function UsersPage() {
                         )}
                       </Td>
                       <Td>
-                        {user.id !== u.id && u.role !== "OWNER" && (
+                        {user.id !== u.id && u.role !== "ADMIN" && (
                           <button
                             type="button"
                             onClick={() => toggleActive(u)}

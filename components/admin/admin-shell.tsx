@@ -20,8 +20,8 @@ import { useAuth } from "@/lib/auth";
 import { BrandMark } from "@/components/brand-mark";
 
 const ROLE_LABEL: Record<string, string> = {
-  OWNER: "Owner",
-  MANAGER: "Admin",
+  ADMIN: "Admin",
+  MANAGER: "Manager",
   ENGINEER: "Engineer",
 };
 
@@ -50,11 +50,11 @@ const NAV_ITEMS: NavItem[] = [
     labelByRole: { ENGINEER: "Installations" },
     href: "/admin/installations",
     icon: Wrench,
-    roles: ["OWNER", "MANAGER", "ENGINEER"],
+    roles: ["ADMIN", "MANAGER", "ENGINEER"],
     matchPrefix: "/admin/installations",
   },
-  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["OWNER"] },
-  { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["OWNER"], matchPrefix: "/admin/settings" },
+  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["ADMIN"] },
+  { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["ADMIN"], matchPrefix: "/admin/settings" },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {

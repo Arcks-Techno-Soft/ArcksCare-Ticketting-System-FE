@@ -15,10 +15,10 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "OWNER") router.replace("/admin/tickets");
+    else if (user.role !== "ADMIN") router.replace("/admin/tickets");
   }, [ready, user, router]);
 
-  if (!ready || !user || user.role !== "OWNER") return null;
+  if (!ready || !user || user.role !== "ADMIN") return null;
 
   return (
     <AdminShell>

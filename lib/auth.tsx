@@ -32,7 +32,7 @@ export type AuthUser = {
   id: number;
   username: string;
   name: string;
-  role: "OWNER" | "MANAGER" | "ENGINEER";
+  role: "ADMIN" | "MANAGER" | "ENGINEER";
   active: boolean;
   email?: string | null;
 };

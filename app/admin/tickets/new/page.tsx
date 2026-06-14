@@ -10,10 +10,10 @@ import { TicketForm } from "@/components/ticket-form";
 import { submitTicket } from "@/lib/api";
 
 /**
- * Staff-facing ticket creation. Any signed-in staff member (Owner / Manager /
+ * Staff-facing ticket creation. Any signed-in staff member (Admin / Manager /
  * Engineer) can open a ticket here. Because it submits with the staff member's
  * JWT, the backend records them as `raised_by`, so the ticket surfaces in the
- * admin inbox tagged "Opened by <name>" for an Owner/Manager to assign.
+ * admin inbox tagged "Opened by <name>" for an Admin/Manager to assign.
  */
 export default function AdminNewTicketPage() {
   const router = useRouter();

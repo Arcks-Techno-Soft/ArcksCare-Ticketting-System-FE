@@ -71,7 +71,7 @@ export default function AdminLoginPage() {
           Sign in to admin.
         </h1>
         <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">
-          For Owner, Manager, and Engineer accounts. Customer ticket
+          For Admin, Manager, and Engineer accounts. Customer ticket
           submissions don&apos;t need a login.
         </p>
 
@@ -127,7 +127,7 @@ export default function AdminLoginPage() {
         </form>
 
         <p className="mt-10 text-[12px] text-ink-subtle">
-          Dev defaults: <code className="font-mono">owner / owner123</code> (Owner) ·{" "}
+          Dev defaults: <code className="font-mono">owner / owner123</code> (Admin) ·{" "}
           <code className="font-mono">admin / admin123</code> (Manager).
           Change these in <code className="font-mono">backend/.env</code> before deploying.
         </p>
