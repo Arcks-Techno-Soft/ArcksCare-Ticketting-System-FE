@@ -444,15 +444,13 @@ export default function InstallationDetailPage() {
                       <div className="flex gap-2">
                         <Button
                           variant="primary"
-                          size="sm"
                           loading={acting === "invoice"}
                           onClick={saveInvoice}
                         >
                           Save
                         </Button>
                         <Button
-                          variant="secondary"
-                          size="sm"
+                          variant="outline"
                           onClick={() => setEditingInvoice(false)}
                         >
                           Cancel
