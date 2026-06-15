@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { useAuth, API_BASE_URL } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
-import { Textarea, Label } from "@/components/ui/Field";
+import { Textarea, Label, Input, Select } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import {
@@ -17,7 +18,17 @@ import {
   type NoteAttachmentView,
   type PickedImage,
 } from "@/components/admin/note-images";
+import { INDIAN_STATES } from "@/lib/options";
+import type { LocationPayload } from "@/components/address-map";
 import { fmtIst } from "@/lib/format-date";
+
+// Leaflet touches `window`, so the map must be client-only.
+const AddressMap = dynamic(() => import("@/components/address-map"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[280px] w-full animate-pulse rounded-xl2 border border-line bg-surface-raised" />
+  ),
+});
 
 type Installation = {
   id: number;
@@ -29,6 +40,14 @@ type Installation = {
   email?: string | null;
   invoice_number: string;
   status: string;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  address_line3?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   created_by?: Engineer | null;
   assigned_by?: Engineer | null;
   assigned_engineer?: Engineer | null;
@@ -359,6 +378,9 @@ export default function InstallationDetailPage() {
     if (ok) setEditingInvoice(false);
   };
 
+  const saveAddress = (payload: Record<string, unknown>) =>
+    callAction("address", "/address", "PATCH", payload);
+
   return (
     <AdminShell>
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
@@ -474,6 +496,13 @@ export default function InstallationDetailPage() {
                 }
               />
             </DetailBlock>
+
+            <AddressBlock
+              inst={inst}
+              canEdit={canEditInvoice}
+              busy={acting === "address"}
+              onSave={saveAddress}
+            />
 
             <DetailBlock title="Assignment">
               <Row
@@ -668,6 +697,202 @@ export default function InstallationDetailPage() {
 }
 
 /* ---------- subcomponents ---------- */
+
+function AddressBlock({
+  inst,
+  canEdit,
+  busy,
+  onSave,
+}: {
+  inst: Installation;
+  canEdit: boolean;
+  busy: boolean;
+  onSave: (payload: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    address_line1: "",
+    address_line2: "",
+    address_line3: "",
+    city: "",
+    state: "",
+    pincode: "",
+  });
+  const [geo, setGeo] = useState<{ lat: number | null; lng: number | null }>({
+    lat: null,
+    lng: null,
+  });
+  const [err, setErr] = useState<string | null>(null);
+
+  const start = () => {
+    setDraft({
+      address_line1: inst.address_line1 ?? "",
+      address_line2: inst.address_line2 ?? "",
+      address_line3: inst.address_line3 ?? "",
+      city: inst.city ?? "",
+      state: inst.state ?? "",
+      pincode: inst.pincode ?? "",
+    });
+    setGeo({ lat: inst.latitude ?? null, lng: inst.longitude ?? null });
+    setErr(null);
+    setEditing(true);
+  };
+
+  const onLocationChange = (loc: LocationPayload) => {
+    setGeo({ lat: loc.lat, lng: loc.lng });
+    const a = loc.address;
+    setDraft((d) => {
+      const next = { ...d };
+      if (a.line1) next.address_line1 = a.line1;
+      if (a.line2) next.address_line2 = a.line2;
+      if (a.line3) next.address_line3 = a.line3;
+      if (a.city) next.city = a.city;
+      if (a.pincode) next.pincode = a.pincode;
+      if (a.state) {
+        const match = INDIAN_STATES.find((s) => s.toLowerCase() === a.state!.toLowerCase());
+        if (match) next.state = match;
+      }
+      return next;
+    });
+  };
+
+  const save = async () => {
+    setErr(null);
+    if (draft.address_line1.trim().length < 3) return setErr("Address line 1 is required.");
+    if (draft.city.trim().length < 2) return setErr("City is required.");
+    if (!draft.state) return setErr("Select a state.");
+    if (draft.pincode.replace(/\D/g, "").length < 4) return setErr("Enter a valid pincode.");
+    const ok = await onSave({
+      address_line1: draft.address_line1.trim(),
+      address_line2: draft.address_line2.trim() || null,
+      address_line3: draft.address_line3.trim() || null,
+      city: draft.city.trim(),
+      state: draft.state,
+      pincode: draft.pincode.trim(),
+      latitude: geo.lat,
+      longitude: geo.lng,
+    });
+    if (ok) setEditing(false);
+  };
+
+  const lines = [
+    inst.address_line1,
+    inst.address_line2,
+    inst.address_line3,
+    [inst.city, inst.state, inst.pincode].filter(Boolean).join(", "),
+  ].filter((l) => l && l.trim());
+
+  if (editing) {
+    return (
+      <DetailBlock title="Site address">
+        <div className="space-y-4 p-4">
+          <div>
+            <Label htmlFor="ed_line1" required>Address line 1</Label>
+            <Input
+              id="ed_line1"
+              value={draft.address_line1}
+              onChange={(e) => setDraft((d) => ({ ...d, address_line1: e.target.value }))}
+              placeholder="Building name, floor, street"
+            />
+          </div>
+          <Input
+            value={draft.address_line2}
+            onChange={(e) => setDraft((d) => ({ ...d, address_line2: e.target.value }))}
+            placeholder="Address line 2 (optional)"
+            aria-label="Address line 2"
+          />
+          <Input
+            value={draft.address_line3}
+            onChange={(e) => setDraft((d) => ({ ...d, address_line3: e.target.value }))}
+            placeholder="Address line 3 (optional)"
+            aria-label="Address line 3"
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Input
+              value={draft.city}
+              onChange={(e) => setDraft((d) => ({ ...d, city: e.target.value }))}
+              placeholder="City"
+              aria-label="City"
+            />
+            <Select
+              options={INDIAN_STATES}
+              placeholder="State"
+              value={draft.state}
+              onChange={(e) => setDraft((d) => ({ ...d, state: e.target.value }))}
+              aria-label="State"
+            />
+            <Input
+              value={draft.pincode}
+              onChange={(e) => setDraft((d) => ({ ...d, pincode: e.target.value }))}
+              placeholder="Pincode"
+              inputMode="numeric"
+              aria-label="Pincode"
+            />
+          </div>
+          <div>
+            <Label
+              hint={
+                geo.lat != null && geo.lng != null
+                  ? `Pin set: ${geo.lat.toFixed(5)}, ${geo.lng.toFixed(5)}`
+                  : "Optional"
+              }
+            >
+              Drop a pin on the map
+            </Label>
+            <AddressMap onLocationChange={onLocationChange} />
+          </div>
+          {err && <p className="text-[13px] text-red-700">{err}</p>}
+          <div className="flex gap-2">
+            <Button variant="primary" loading={busy} onClick={save}>
+              Save
+            </Button>
+            <Button variant="outline" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </DetailBlock>
+    );
+  }
+
+  return (
+    <DetailBlock title="Site address">
+      <Row
+        label="Address"
+        value={
+          <span className="flex flex-col gap-2">
+            {lines.length ? (
+              <span className="whitespace-pre-line">{lines.join("\n")}</span>
+            ) : (
+              <span className="text-ink-subtle">No address yet</span>
+            )}
+            <span className="flex items-center gap-3">
+              {inst.latitude != null && inst.longitude != null && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${inst.latitude},${inst.longitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[12.5px] text-ink underline-offset-2 hover:underline"
+                >
+                  View on map
+                </a>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={start}
+                  className="text-[12.5px] font-medium text-ink underline-offset-2 hover:underline"
+                >
+                  {lines.length ? "Edit" : "Add address"}
+                </button>
+              )}
+            </span>
+          </span>
+        }
+      />
+    </DetailBlock>
+  );
+}
 
 function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (

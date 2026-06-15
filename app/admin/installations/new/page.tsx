@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
 import { useAuth, API_BASE_URL } from "@/lib/auth";
@@ -9,7 +10,16 @@ import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FieldError } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
-import { BUSINESS_TYPES } from "@/lib/options";
+import { BUSINESS_TYPES, INDIAN_STATES } from "@/lib/options";
+import type { LocationPayload } from "@/components/address-map";
+
+// Leaflet touches `window`, so the map must be client-only.
+const AddressMap = dynamic(() => import("@/components/address-map"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[280px] w-full animate-pulse rounded-xl2 border border-line bg-surface-raised" />
+  ),
+});
 
 type FormState = {
   business_name: string;
@@ -18,6 +28,12 @@ type FormState = {
   phone: string;
   email: string;
   invoice_number: string;
+  address_line1: string;
+  address_line2: string;
+  address_line3: string;
+  city: string;
+  state: string;
+  pincode: string;
 };
 
 const EMPTY: FormState = {
@@ -27,6 +43,12 @@ const EMPTY: FormState = {
   phone: "",
   email: "",
   invoice_number: "",
+  address_line1: "",
+  address_line2: "",
+  address_line3: "",
+  city: "",
+  state: "",
+  pincode: "",
 };
 
 type AssignMode = "later" | "engineer" | "self";
@@ -41,6 +63,10 @@ export default function NewInstallationPage() {
   const { ready, user, authFetch } = useAuth();
 
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [geo, setGeo] = useState<{ lat: number | null; lng: number | null }>({
+    lat: null,
+    lng: null,
+  });
   const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>("later");
   const [assignMode, setAssignMode] = useState<AssignMode>("later");
   const [engineers, setEngineers] = useState<Engineer[]>([]);
@@ -75,6 +101,27 @@ export default function NewInstallationPage() {
     setForm((f) => ({ ...f, [key]: value }));
   };
 
+  // Pin drop / search result on the map → fill geo + any address parts it returns.
+  const onLocationChange = (loc: LocationPayload) => {
+    setGeo({ lat: loc.lat, lng: loc.lng });
+    const a = loc.address;
+    setForm((f) => {
+      const next = { ...f };
+      if (a.line1) next.address_line1 = a.line1;
+      if (a.line2) next.address_line2 = a.line2;
+      if (a.line3) next.address_line3 = a.line3;
+      if (a.city) next.city = a.city;
+      if (a.pincode) next.pincode = a.pincode;
+      if (a.state) {
+        const match = INDIAN_STATES.find(
+          (s) => s.toLowerCase() === a.state!.toLowerCase()
+        );
+        if (match) next.state = match;
+      }
+      return next;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -85,6 +132,10 @@ export default function NewInstallationPage() {
     if (form.phone.trim().length < 7) return setError("Phone number is required.");
     if (invoiceMode === "enter" && !form.invoice_number.trim())
       return setError("Enter the invoice number, or choose “To be added later”.");
+    if (form.address_line1.trim().length < 3) return setError("Address line 1 is required.");
+    if (form.city.trim().length < 2) return setError("City is required.");
+    if (!form.state) return setError("Select a state.");
+    if (form.pincode.replace(/\D/g, "").length < 4) return setError("Enter a valid pincode.");
 
     const invoiceValue =
       invoiceMode === "later" ? INVOICE_DEFERRED : form.invoice_number.trim();
@@ -96,6 +147,14 @@ export default function NewInstallationPage() {
       phone: form.phone.trim(),
       email: form.email.trim() || null,
       invoice_number: invoiceValue,
+      address_line1: form.address_line1.trim(),
+      address_line2: form.address_line2.trim() || null,
+      address_line3: form.address_line3.trim() || null,
+      city: form.city.trim(),
+      state: form.state,
+      pincode: form.pincode.trim(),
+      latitude: geo.lat,
+      longitude: geo.lng,
     };
 
     if (assignMode === "engineer") {
@@ -231,6 +290,89 @@ export default function NewInstallationPage() {
                   aria-label="Invoice number"
                 />
               )}
+            </div>
+          </div>
+
+          {/* Site address / location */}
+          <div className="space-y-5 rounded-xl2 border border-line bg-white p-5">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+              Site address
+            </p>
+
+            <div>
+              <Label htmlFor="address_line1" required>Address line 1</Label>
+              <Input
+                id="address_line1"
+                value={form.address_line1}
+                onChange={(e) => update("address_line1", e.target.value)}
+                placeholder="Building name, floor, street"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div>
+                <Label htmlFor="address_line2">Address line 2 (optional)</Label>
+                <Input
+                  id="address_line2"
+                  value={form.address_line2}
+                  onChange={(e) => update("address_line2", e.target.value)}
+                  placeholder="Area, locality"
+                />
+              </div>
+              <div>
+                <Label htmlFor="address_line3">Address line 3 (optional)</Label>
+                <Input
+                  id="address_line3"
+                  value={form.address_line3}
+                  onChange={(e) => update("address_line3", e.target.value)}
+                  placeholder="Landmark, additional info"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+              <div>
+                <Label htmlFor="city" required>City</Label>
+                <Input
+                  id="city"
+                  value={form.city}
+                  onChange={(e) => update("city", e.target.value)}
+                  placeholder="Bengaluru"
+                />
+              </div>
+              <div>
+                <Label htmlFor="state" required>State</Label>
+                <Select
+                  id="state"
+                  options={INDIAN_STATES}
+                  placeholder="Select state"
+                  value={form.state}
+                  onChange={(e) => update("state", e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="pincode" required>Pincode</Label>
+                <Input
+                  id="pincode"
+                  value={form.pincode}
+                  onChange={(e) => update("pincode", e.target.value)}
+                  placeholder="560001"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label
+                hint={
+                  geo.lat != null && geo.lng != null
+                    ? `Pin set: ${geo.lat.toFixed(5)}, ${geo.lng.toFixed(5)}`
+                    : "Optional"
+                }
+              >
+                Drop a pin on the map
+              </Label>
+              <AddressMap onLocationChange={onLocationChange} />
             </div>
           </div>
 
