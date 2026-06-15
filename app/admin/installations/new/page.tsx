@@ -45,6 +45,7 @@ export default function NewInstallationPage() {
   const [assignMode, setAssignMode] = useState<AssignMode>("later");
   const [engineers, setEngineers] = useState<Engineer[]>([]);
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
+  const [invoiceDoc, setInvoiceDoc] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,6 +125,36 @@ export default function NewInstallationPage() {
         throw new Error(msg);
       }
       const created = (await res.json()) as { reference: string };
+
+      // Optional invoice document. The installation already exists, so a
+      // failed upload must not block navigation — surface it and let the user
+      // retry from the installation page (re-submitting would duplicate it).
+      if (invoiceDoc) {
+        try {
+          const fd = new FormData();
+          fd.append("file", invoiceDoc, invoiceDoc.name);
+          const up = await authFetch(
+            `${API_BASE_URL}/api/v1/admin/installations/${created.reference}/invoice-document`,
+            { method: "POST", body: fd }
+          );
+          if (!up.ok) {
+            const t = await up.text();
+            let msg = `Server ${up.status}`;
+            try {
+              msg = JSON.parse(t).detail ?? msg;
+            } catch {
+              msg = t.slice(0, 200);
+            }
+            throw new Error(msg);
+          }
+        } catch (e) {
+          alert(
+            `Installation ${created.reference} was created, but the invoice document didn't upload: ` +
+              `${e instanceof Error ? e.message : "upload failed"}. You can add it from the installation page.`
+          );
+        }
+      }
+
       router.push(`/admin/installations/${created.reference}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Submit failed");
@@ -232,6 +263,30 @@ export default function NewInstallationPage() {
                 />
               )}
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="invoice_doc">Invoice document (optional)</Label>
+            <input
+              id="invoice_doc"
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(e) => setInvoiceDoc(e.target.files?.[0] ?? null)}
+              className="mt-1 block w-full text-[13.5px] text-ink-muted file:mr-3 file:rounded-full file:border file:border-line file:bg-white file:px-3 file:py-1.5 file:text-[12.5px] file:font-medium file:text-ink hover:file:border-ink-soft"
+            />
+            {invoiceDoc && (
+              <p className="mt-1.5 flex items-center gap-2 text-[12.5px] text-ink-muted">
+                <span className="truncate">{invoiceDoc.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceDoc(null)}
+                  className="text-ink underline-offset-2 hover:underline"
+                >
+                  Remove
+                </button>
+              </p>
+            )}
+            <p className="mt-1 text-[12px] text-ink-subtle">PDF or image. You can also add this later.</p>
           </div>
 
           {/* Assignment — owners/managers only; engineer installs go to the queue */}

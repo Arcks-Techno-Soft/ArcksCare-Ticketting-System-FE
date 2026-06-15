@@ -28,6 +28,13 @@ type Installation = {
   phone: string;
   email?: string | null;
   invoice_number: string;
+  invoice_document?: {
+    filename: string;
+    content_type: string;
+    size_bytes: number;
+    storage_url: string;
+    uploaded_at?: string | null;
+  } | null;
   status: string;
   created_by?: Engineer | null;
   assigned_by?: Engineer | null;
@@ -129,7 +136,7 @@ export default function InstallationDetailPage() {
   const callAction = async (
     label: string,
     endpoint: string,
-    method: "POST" | "PATCH" = "POST",
+    method: "POST" | "PATCH" | "DELETE" = "POST",
     body?: unknown
   ) => {
     setError(null);
@@ -359,6 +366,39 @@ export default function InstallationDetailPage() {
     if (ok) setEditingInvoice(false);
   };
 
+  const uploadInvoiceDoc = async (file: File) => {
+    setError(null);
+    setActing("invoice-doc");
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/installations/${reference}/invoice-document`,
+        { method: "POST", body: fd }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try {
+          msg = JSON.parse(t).detail ?? msg;
+        } catch {
+          msg = t.slice(0, 200);
+        }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const removeInvoiceDoc = async () => {
+    if (!confirm("Remove the invoice document?")) return;
+    await callAction("invoice-doc", "/invoice-document", "DELETE");
+  };
+
   return (
     <AdminShell>
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
@@ -471,6 +511,58 @@ export default function InstallationDetailPage() {
                       )}
                     </span>
                   )
+                }
+              />
+              <Row
+                label="Invoice doc"
+                value={
+                  <div className="flex flex-col gap-2">
+                    {inst.invoice_document ? (
+                      <a
+                        href={inst.invoice_document.storage_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[13.5px] text-ink underline-offset-2 hover:underline"
+                      >
+                        <span aria-hidden>📄</span>
+                        <span className="truncate">{inst.invoice_document.filename}</span>
+                      </a>
+                    ) : (
+                      <span className="text-[13.5px] text-ink-subtle">No document</span>
+                    )}
+                    {canEditInvoice && (
+                      <div className="flex items-center gap-3">
+                        <label className="cursor-pointer text-[12.5px] font-medium text-ink underline-offset-2 hover:underline">
+                          {acting === "invoice-doc"
+                            ? "Uploading…"
+                            : inst.invoice_document
+                            ? "Replace"
+                            : "Upload"}
+                          <input
+                            type="file"
+                            accept="application/pdf,image/*"
+                            className="hidden"
+                            disabled={acting === "invoice-doc"}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadInvoiceDoc(f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                        {inst.invoice_document && (
+                          <button
+                            type="button"
+                            onClick={removeInvoiceDoc}
+                            disabled={acting === "invoice-doc"}
+                            className="text-[12.5px] font-medium text-red-700 underline-offset-2 hover:underline"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 }
               />
             </DetailBlock>
