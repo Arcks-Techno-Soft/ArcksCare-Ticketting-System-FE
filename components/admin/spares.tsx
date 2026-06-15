@@ -67,7 +67,7 @@ export function Spares({
   const [pickedId, setPickedId] = useState<string>("");
   const [quantity, setQuantity] = useState<string>("1");
   const [feeDraft, setFeeDraft] = useState<string>(
-    charges ? String(charges.service_fee_inr) : "500"
+    charges ? String(charges.service_fee_inr) : "800"
   );
 
   // Keep the fee draft in sync if the parent reloads with a new value.
@@ -114,7 +114,7 @@ export function Spares({
         </span>
         {isWarranty && (
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-emerald-700">
-            Under warranty · spares free
+            {charges.warranty_status === "AMC" ? "AMC" : "Under warranty"} · spares &amp; service free
           </span>
         )}
       </div>
@@ -258,38 +258,35 @@ export function Spares({
           }
         />
 
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-[13px] text-ink-muted">Service fee</span>
-          {isWarranty ? (
-            <span className="text-[13.5px]">
-              <span className="text-ink-subtle line-through">
+        {/* Service fee is spared for covered tickets (under warranty / AMC) —
+            the row is hidden entirely. Out-of-warranty defaults to ₹800. */}
+        {!isWarranty && (
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="text-[13px] text-ink-muted">Service fee</span>
+            {canManage ? (
+              <div className="flex items-center gap-2">
+                <span className="text-ink-subtle">₹</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={feeDraft}
+                  onChange={(e) => setFeeDraft(e.target.value)}
+                  onBlur={() => {
+                    const next = Math.max(0, parseInt(feeDraft || "0", 10));
+                    if (next !== charges.service_fee_inr) onServiceFee(next);
+                    else setFeeDraft(String(charges.service_fee_inr));
+                  }}
+                  className="w-24 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
+                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                />
+              </div>
+            ) : (
+              <span className="text-[13.5px] text-ink">
                 ₹{charges.service_fee_inr.toLocaleString("en-IN")}
               </span>
-              <span className="ml-2 text-emerald-700">Free (warranty)</span>
-            </span>
-          ) : canManage ? (
-            <div className="flex items-center gap-2">
-              <span className="text-ink-subtle">₹</span>
-              <input
-                type="number"
-                min={0}
-                value={feeDraft}
-                onChange={(e) => setFeeDraft(e.target.value)}
-                onBlur={() => {
-                  const next = Math.max(0, parseInt(feeDraft || "0", 10));
-                  if (next !== charges.service_fee_inr) onServiceFee(next);
-                  else setFeeDraft(String(charges.service_fee_inr));
-                }}
-                className="w-24 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
-                           focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
-              />
-            </div>
-          ) : (
-            <span className="text-[13.5px] text-ink">
-              ₹{charges.service_fee_inr.toLocaleString("en-IN")}
-            </span>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
           <span className="text-[13px] font-medium text-ink">Total</span>
