@@ -53,6 +53,7 @@ type AdminTicket = {
   severity: string;
   status: string;
   warranty_status: string;
+  service_type: string;
   description?: string;
   created_at: string;
   attachments: { id: number; filename: string; storage_url: string; size_bytes: number; content_type: string }[];
@@ -116,6 +117,10 @@ type Shipment = {
 // blank intake default and warranty must be set (under / out / AMC) before a
 // ticket can be assigned to an engineer.
 const WARRANTY_OPTIONS = ["UNDER_WARRANTY", "OUT_OF_WARRANTY", "AMC"] as const;
+const SERVICE_TYPE_OPTIONS = [
+  { value: "SITE_VISIT", label: "Site visit" },
+  { value: "REMOTE_SUPPORT", label: "Remote support" },
+] as const;
 const SEVERITY_OPTIONS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 const SEVERITY_DOTS: Record<string, string> = {
   LOW: "bg-emerald-500",
@@ -501,6 +506,9 @@ export default function TicketDetailPage() {
   const handleWarranty = (next: string) =>
     callAction(`warranty-${next}`, "/warranty", "PATCH", { warranty_status: next });
 
+  const handleServiceType = (next: string) =>
+    callAction(`service-type-${next}`, "/service-type", "PATCH", { service_type: next });
+
   const handleSeverity = (next: string) =>
     callAction(`severity-${next}`, "/severity", "PATCH", { severity: next });
 
@@ -818,6 +826,8 @@ export default function TicketDetailPage() {
 
   const canModerate = user.role === "ADMIN" || user.role === "MANAGER";
   const isAdmin = user.role === "ADMIN";
+  // Remote-support tickets need no signatures, PDF, spare parts or shipments.
+  const isRemote = ticket.service_type === "REMOTE_SUPPORT";
 
   return (
     <AdminShell>
@@ -968,6 +978,7 @@ export default function TicketDetailPage() {
               onAssign={handleAssign}
               onSelfAssign={handleSelfAssign}
               onWarranty={handleWarranty}
+              onServiceType={handleServiceType}
               onSeverity={handleSeverity}
               onAccept={handleAccept}
               onStartWork={handleStartWork}
@@ -978,18 +989,20 @@ export default function TicketDetailPage() {
               onDownloadPdf={handleDownloadPdf}
               onRegenPdf={handleRegenPdf}
             />
-            <ShipmentsCard
-              shipments={shipments}
-              canShip={
-                ticket.status !== "CLOSED" &&
-                (user.role === "ADMIN" ||
-                  user.role === "MANAGER" ||
-                  ticket.assigned_engineer?.id === user.id)
-              }
-              acting={acting}
-              onOpenDialog={() => setShipDialogOpen(true)}
-              onMarkDelivered={handleMarkDelivered}
-            />
+            {!isRemote && (
+              <ShipmentsCard
+                shipments={shipments}
+                canShip={
+                  ticket.status !== "CLOSED" &&
+                  (user.role === "ADMIN" ||
+                    user.role === "MANAGER" ||
+                    ticket.assigned_engineer?.id === user.id)
+                }
+                acting={acting}
+                onOpenDialog={() => setShipDialogOpen(true)}
+                onMarkDelivered={handleMarkDelivered}
+              />
+            )}
             <WorkNotes
               notes={notes}
               canAdd={
@@ -1002,6 +1015,7 @@ export default function TicketDetailPage() {
             <Spares
               charges={charges}
               catalog={spareCatalog}
+              remote={isRemote}
               canManage={
                 // Invoice freezes at RESOLVED — no edits by anyone after that,
                 // since the figures travel into the signed resolution PDF.
@@ -1204,6 +1218,7 @@ function ActionPanel(props: {
   onAssign: () => void;
   onSelfAssign: () => void;
   onWarranty: (next: string) => void;
+  onServiceType: (next: string) => void;
   onSeverity: (next: string) => void;
   onAccept: () => void;
   onStartWork: () => void;
@@ -1219,7 +1234,7 @@ function ActionPanel(props: {
     hasUndeliveredShipments,
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
-    onAcknowledge, onAssign, onSelfAssign, onWarranty, onSeverity,
+    onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onSeverity,
     onAccept, onStartWork, onResolve, onEngineerSign, onCustomerSign,
     onGenerateFieldLink, onDownloadPdf, onRegenPdf,
   } = props;
@@ -1255,6 +1270,7 @@ function ActionPanel(props: {
   // Warranty must be decided before assigning. Mirrors the backend gate so the
   // user sees why assigning is blocked instead of hitting a 400.
   const warrantyUnknown = ticket.warranty_status === "UNKNOWN";
+  const isRemote = ticket.service_type === "REMOTE_SUPPORT";
 
   // Engineer-style actions (accept / start / resolve / sign) are available to
   // whoever the ticket is currently assigned to — engineer, owner, or manager
@@ -1453,7 +1469,7 @@ function ActionPanel(props: {
               onClick={() => setShowResolveForm(true)}
               className="w-full"
             >
-              Mark resolved
+              {isRemote ? "Resolve & close" : "Mark resolved"}
             </Button>
           ) : (
             <div className="space-y-3">
@@ -1488,7 +1504,9 @@ function ActionPanel(props: {
                 </Button>
               </div>
               <p className="text-[12px] text-ink-subtle">
-                Customer will be asked to sign the resolution document in Phase 2.4.
+                {isRemote
+                  ? "Remote support — this resolves and closes the ticket immediately. No signatures or PDF."
+                  : "After resolving, capture the customer + engineer signatures to close the ticket."}
               </p>
             </div>
           )}
@@ -1745,6 +1763,36 @@ function ActionPanel(props: {
                   } disabled:opacity-50`}
                 >
                   {w === "UNDER_WARRANTY" ? "In warranty" : w === "OUT_OF_WARRANTY" ? "Out of warranty" : w === "AMC" ? "AMC" : "Unknown"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {(canModerate || isMyTicket) && (
+        <div className="border-t border-line pt-5">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">Service type</p>
+          <p className="mt-1 text-[12.5px] text-ink-muted">
+            Remote support skips signatures, PDF and spare parts, and closes in one step.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {SERVICE_TYPE_OPTIONS.map((opt) => {
+              const active = ticket.service_type === opt.value;
+              const locked = ["RESOLVED", "CLOSED"].includes(ticket.status);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={locked || acting?.startsWith("service-type")}
+                  onClick={() => onServiceType(opt.value)}
+                  className={`rounded-full border px-3 py-1.5 text-[12px] transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-white"
+                      : "border-line bg-white text-ink hover:border-ink-soft"
+                  } disabled:opacity-50`}
+                >
+                  {opt.label}
                 </button>
               );
             })}

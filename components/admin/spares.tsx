@@ -44,6 +44,8 @@ type Props = {
   charges: ChargesSummary | null;
   catalog: SpareCatalogItem[];
   canManage: boolean;
+  // Remote-support tickets carry no spare parts — only the service fee shows.
+  remote?: boolean;
   busy: boolean;
   error: string | null;
   onAdd: (input: { catalog_id?: number; name?: string; unit_price_inr?: number; quantity: number }) => Promise<void> | void;
@@ -56,6 +58,7 @@ export function Spares({
   charges,
   catalog,
   canManage,
+  remote = false,
   busy,
   error,
   onAdd,
@@ -110,36 +113,38 @@ export function Spares({
     <div className="rounded-xl2 border border-line bg-white shadow-soft">
       <div className="flex items-center justify-between border-b border-line bg-surface-raised px-5 py-3">
         <span className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
-          Spare parts &amp; charges
+          {remote ? "Service charge" : "Spare parts & charges"}
         </span>
-        {isWarranty && (
+        {!remote && isWarranty && (
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-emerald-700">
             {charges.warranty_status === "AMC" ? "AMC" : "Under warranty"} · spares &amp; service free
           </span>
         )}
       </div>
 
-      <ul className="divide-y divide-line/60">
-        {charges.items.length === 0 ? (
-          <li className="px-5 py-4 text-[13px] text-ink-subtle">
-            No spare parts recorded yet.
-          </li>
-        ) : (
-          charges.items.map((it) => (
-            <SpareRow
-              key={it.id}
-              item={it}
-              isWarranty={isWarranty}
-              canManage={canManage}
-              busy={busy}
-              onUpdate={onUpdate}
-              onRemove={onRemove}
-            />
-          ))
-        )}
-      </ul>
+      {!remote && (
+        <ul className="divide-y divide-line/60">
+          {charges.items.length === 0 ? (
+            <li className="px-5 py-4 text-[13px] text-ink-subtle">
+              No spare parts recorded yet.
+            </li>
+          ) : (
+            charges.items.map((it) => (
+              <SpareRow
+                key={it.id}
+                item={it}
+                isWarranty={isWarranty}
+                canManage={canManage}
+                busy={busy}
+                onUpdate={onUpdate}
+                onRemove={onRemove}
+              />
+            ))
+          )}
+        </ul>
+      )}
 
-      {canManage && (
+      {!remote && canManage && (
         <div className="border-t border-line">
           <AnimatePresence initial={false}>
             {open ? (
@@ -242,21 +247,23 @@ export function Spares({
 
       {/* ----------------------- charge summary ----------------------- */}
       <div className="border-t border-line bg-surface-raised/40 px-5 py-4">
-        <SummaryRow
-          label="Spares subtotal"
-          value={
-            isWarranty
-              ? (
-                  <span>
-                    <span className="text-ink-subtle line-through">
-                      ₹{charges.spares_list_price_total_inr.toLocaleString("en-IN")}
+        {!remote && (
+          <SummaryRow
+            label="Spares subtotal"
+            value={
+              isWarranty
+                ? (
+                    <span>
+                      <span className="text-ink-subtle line-through">
+                        ₹{charges.spares_list_price_total_inr.toLocaleString("en-IN")}
+                      </span>
+                      <span className="ml-2 text-emerald-700">Free (warranty)</span>
                     </span>
-                    <span className="ml-2 text-emerald-700">Free (warranty)</span>
-                  </span>
-                )
-              : `₹${charges.spares_billable_total_inr.toLocaleString("en-IN")}`
-          }
-        />
+                  )
+                : `₹${charges.spares_billable_total_inr.toLocaleString("en-IN")}`
+            }
+          />
+        )}
 
         {/* Service fee is spared for covered tickets (under warranty / AMC) —
             the row is hidden entirely. Out-of-warranty defaults to ₹800. */}
