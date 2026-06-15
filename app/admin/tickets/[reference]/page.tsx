@@ -112,7 +112,10 @@ type Shipment = {
   items: ShipmentItem[];
 };
 
-const WARRANTY_OPTIONS = ["UNDER_WARRANTY", "OUT_OF_WARRANTY", "UNKNOWN"] as const;
+// Selectable warranty statuses. UNKNOWN is intentionally excluded — it is the
+// blank intake default and warranty must be set (under / out / AMC) before a
+// ticket can be assigned to an engineer.
+const WARRANTY_OPTIONS = ["UNDER_WARRANTY", "OUT_OF_WARRANTY", "AMC"] as const;
 const SEVERITY_OPTIONS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 const SEVERITY_DOTS: Record<string, string> = {
   LOW: "bg-emerald-500",
@@ -1374,8 +1377,8 @@ function ActionPanel(props: {
           />
           {warrantyUnknown && (
             <p className="mt-3 rounded-xl2 border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">
-              Set the warranty status (Under / Out of Warranty) before assigning
-              this ticket.
+              Set the warranty status (Under Warranty / Out of Warranty / AMC)
+              before assigning this ticket.
             </p>
           )}
           <Button
@@ -1741,7 +1744,7 @@ function ActionPanel(props: {
                       : "border-line bg-white text-ink hover:border-ink-soft"
                   } disabled:opacity-50`}
                 >
-                  {w === "UNDER_WARRANTY" ? "In warranty" : w === "OUT_OF_WARRANTY" ? "Out of warranty" : "Unknown"}
+                  {w === "UNDER_WARRANTY" ? "In warranty" : w === "OUT_OF_WARRANTY" ? "Out of warranty" : w === "AMC" ? "AMC" : "Unknown"}
                 </button>
               );
             })}
