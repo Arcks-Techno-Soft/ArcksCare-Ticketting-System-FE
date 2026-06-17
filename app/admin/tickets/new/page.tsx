@@ -42,7 +42,7 @@ export default function AdminNewTicketPage() {
             Open a new ticket
           </h1>
           <p className="mt-1 text-[13.5px] text-ink-muted">
-            This ticket will appear in the admin inbox tagged “Opened by {user.name}”,
+            This ticket will appear in the admin inbox tagged “Created by {user.name}”,
             ready for an owner or admin to assign.
           </p>
         </div>

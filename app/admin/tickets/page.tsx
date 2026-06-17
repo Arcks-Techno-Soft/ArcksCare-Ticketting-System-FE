@@ -8,7 +8,7 @@ import { useAuth, API_BASE_URL } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
 import { Input, Select } from "@/components/ui/Field";
-import { fmtIst, fmtIstTime, fmtIstDate } from "@/lib/format-date";
+import { fmtIst, fmtIstTime, fmtIstDate, fmtIstDateDMY } from "@/lib/format-date";
 
 type AdminTicket = {
   id: number;
@@ -324,6 +324,9 @@ export default function AdminTicketsPage() {
                   >
                     <Td>
                       <span className="font-mono text-[13px] text-ink">{t.reference}</span>
+                      <div className="mt-0.5 text-[11px] text-ink-subtle">
+                        {fmtIstDateDMY(t.created_at)}
+                      </div>
                     </Td>
                     <Td>
                       <div className="text-ink">{t.business_name}</div>
@@ -332,7 +335,7 @@ export default function AdminTicketsPage() {
                       </div>
                       {t.raised_by && (
                         <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
-                          Opened by {t.raised_by.name}
+                          Created by {t.raised_by.name}
                         </div>
                       )}
                     </Td>
