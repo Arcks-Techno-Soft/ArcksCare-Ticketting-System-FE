@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
-import { BrandMark } from "@/components/brand-mark";
+import { Wordmark } from "@/components/wordmark";
 
 // Backend (app/utils/ticket_id.py) prefixes references with the customer's
 // state code — KA, TN, MH, TG, AP, … — falling back to "AC" only when the
@@ -35,12 +35,9 @@ export default function TrackPage() {
   return (
     <main className="min-h-screen bg-white">
       <header className="border-b border-line">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <BrandMark />
-            <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-              SK-POS Care
-            </span>
+            <Wordmark />
           </Link>
           <Link
             href="/"
