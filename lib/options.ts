@@ -6,6 +6,7 @@ export const BUSINESS_TYPES = [
   "Retail Store",
   "Cafe",
   "Cloud Kitchen",
+  "Partner",
   "Other",
 ] as const;
 
