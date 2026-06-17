@@ -33,6 +33,9 @@ export const ticketSchema = z.object({
   business_type: z.enum(BUSINESS_TYPES, {
     errorMap: () => ({ message: "Select your business type" }),
   }),
+  // Free-text category, required only when business_type === "Other". The
+  // submit layer sends this value as the business_type when "Other" is picked.
+  business_type_other: z.string().trim().max(60).optional().or(z.literal("")),
 
   // Address
   address_line1: z.string().trim().min(3, "Address line 1 is required"),
@@ -68,6 +71,15 @@ export const ticketSchema = z.object({
     .min(20, "Please describe the issue in at least 20 characters")
     .max(4000, "Description is too long"),
   preferred_contact_time: z.string().optional().or(z.literal("")),
+}).superRefine((val, ctx) => {
+  // When the customer chooses "Other", they must type their business category.
+  if (val.business_type === "Other" && !val.business_type_other?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["business_type_other"],
+      message: "Please specify your business type",
+    });
+  }
 });
 
 export type TicketFormValues = z.infer<typeof ticketSchema>;

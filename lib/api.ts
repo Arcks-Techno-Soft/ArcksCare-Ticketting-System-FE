@@ -45,10 +45,18 @@ export async function submitTicket(
   fetcher: typeof fetch = fetch
 ): Promise<SubmitResult> {
   try {
+    // When the customer chose "Other", the typed category (business_type_other)
+    // IS the business type we store. Strip the helper field and fold its value
+    // into business_type before sending.
+    const { email, business_type_other, business_type, ...rest } = values;
+    const resolvedType =
+      business_type === "Other" && business_type_other?.trim()
+        ? business_type_other.trim()
+        : business_type;
+    const base = { ...rest, business_type: resolvedType };
     // Drop email entirely when blank so the backend stores it as null
     // (an empty string would fail email-format validation).
-    const { email, ...rest } = values;
-    const payload = email && email.trim() ? { ...rest, email } : rest;
+    const payload = email && email.trim() ? { ...base, email } : base;
     const fd = new FormData();
     fd.append("payload", JSON.stringify(payload));
     for (const f of files) fd.append("files", f, f.name);

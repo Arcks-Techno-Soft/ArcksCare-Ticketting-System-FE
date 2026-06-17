@@ -174,6 +174,17 @@ export function TicketForm({ submit = submitTicket, onCreated, submitLabel }: Ti
               {...register("business_type")}
             />
             <FieldError message={errors.business_type?.message} />
+            {watched.business_type === "Other" && (
+              <div className="mt-2">
+                <Input
+                  id="business_type_other"
+                  placeholder="Please specify your business type"
+                  aria-label="Specify your business type"
+                  {...register("business_type_other")}
+                />
+                <FieldError message={errors.business_type_other?.message} />
+              </div>
+            )}
           </FieldGroup>
 
           <FieldGroup>
