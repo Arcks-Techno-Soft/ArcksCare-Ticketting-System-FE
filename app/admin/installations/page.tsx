@@ -213,7 +213,7 @@ export default function InstallationsListPage() {
                       <div className="text-[12px] text-ink-subtle">{r.business_category}</div>
                       {r.created_by && (
                         <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
-                          Opened by {r.created_by.name}
+                          Created by {r.created_by.name}
                         </div>
                       )}
                     </Td>

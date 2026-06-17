@@ -83,6 +83,22 @@ export function fmtIstTime(input: DateInput, opts?: { withSeconds?: boolean }): 
   return `${text} IST`;
 }
 
+/** "17-06-2026" — numeric DD-MM-YYYY date, IST-converted. */
+export function fmtIstDateDMY(input: DateInput): string {
+  const d = toDate(input);
+  if (!d) return "—";
+  // en-GB yields day/month/year order; build the parts explicitly so the
+  // separator is a hyphen (DD-MM-YYYY) regardless of runtime locale quirks.
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST_TZ,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")}-${get("month")}-${get("year")}`;
+}
+
 /** "19 May" — short date label for chart axes etc. (IST-converted) */
 export function fmtIstDateShort(input: DateInput): string {
   const d = toDate(input);
