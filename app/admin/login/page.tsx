@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/Button";
-import { BrandMark } from "@/components/brand-mark";
+import { Wordmark } from "@/components/wordmark";
 import {
   FieldError,
   FieldGroup,
@@ -45,15 +45,7 @@ export default function AdminLoginPage() {
 
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <BrandMark />
-          <div className="flex items-baseline gap-2">
-            <span className="font-display text-[20px] font-semibold tracking-tight text-ink">
-              SK-POS Care
-            </span>
-            <span className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
-              Admin
-            </span>
-          </div>
+          <Wordmark badge="Admin" />
         </Link>
         <Link
           href="/"
