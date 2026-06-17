@@ -9,6 +9,8 @@ import { AdminShell } from "@/components/admin/admin-shell";
 import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
 import { Input, Select } from "@/components/ui/Field";
 import { fmtIst, fmtIstTime, fmtIstDate, fmtIstDateDMY } from "@/lib/format-date";
+import { CloseTicketDialog } from "@/components/admin/close-ticket-dialog";
+import { DeleteTicketDialog } from "@/components/admin/delete-ticket-dialog";
 
 type AdminTicket = {
   id: number;
@@ -51,6 +53,10 @@ type TicketListResponse = {
 export default function AdminTicketsPage() {
   const router = useRouter();
   const { ready, user, authFetch } = useAuth();
+  const isAdmin = user?.role === "ADMIN"; // OWNER is normalized to ADMIN at login
+  // Quick close/delete (Admin/Owner) — actionRef is the row being acted on.
+  const [actionRef, setActionRef] = useState<string | null>(null);
+  const [actionMode, setActionMode] = useState<"close" | "delete" | null>(null);
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
   const [total, setTotal] = useState(0);
   // Per-status counts come from a dedicated aggregate endpoint, NOT from the
@@ -301,6 +307,7 @@ export default function AdminTicketsPage() {
                 <Th>Status</Th>
                 <Th>Warranty</Th>
                 <Th>Created</Th>
+                {isAdmin && <Th>Actions</Th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -308,7 +315,7 @@ export default function AdminTicketsPage() {
                 <SkeletonRows />
               ) : tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-ink-subtle">
+                  <td colSpan={isAdmin ? 9 : 8} className="px-5 py-12 text-center text-ink-subtle">
                     {error ? error : "No tickets match these filters."}
                   </td>
                 </tr>
@@ -364,6 +371,36 @@ export default function AdminTicketsPage() {
                         {timeAgo(t.created_at)}
                       </span>
                     </Td>
+                    {isAdmin && (
+                      <Td>
+                        <div className="flex items-center gap-3">
+                          {t.status !== "CLOSED" && (
+                            <button
+                              type="button"
+                              className="text-[12.5px] font-medium text-red-600 hover:text-red-700"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActionRef(t.reference);
+                                setActionMode("close");
+                              }}
+                            >
+                              Close
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="text-[12.5px] font-medium text-red-600 hover:text-red-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionRef(t.reference);
+                              setActionMode("delete");
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </Td>
+                    )}
                   </motion.tr>
                 ))
               )}
@@ -380,6 +417,33 @@ export default function AdminTicketsPage() {
           onPageSizeChange={(n) => setPageSize(n)}
         />
       </section>
+
+      {isAdmin && actionRef && (
+        <>
+          <CloseTicketDialog
+            open={actionMode === "close"}
+            reference={actionRef}
+            authFetch={authFetch}
+            onClose={() => setActionMode(null)}
+            onClosed={() => {
+              setActionMode(null);
+              fetchTickets();
+              fetchCounts();
+            }}
+          />
+          <DeleteTicketDialog
+            open={actionMode === "delete"}
+            reference={actionRef}
+            authFetch={authFetch}
+            onClose={() => setActionMode(null)}
+            onDeleted={() => {
+              setActionMode(null);
+              fetchTickets();
+              fetchCounts();
+            }}
+          />
+        </>
+      )}
     </AdminShell>
   );
 }

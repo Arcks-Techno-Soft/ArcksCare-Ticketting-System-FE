@@ -31,6 +31,8 @@ import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pa
 import { useRef } from "react";
 import { Label } from "@/components/ui/Field";
 import { ShipPartsDialog } from "@/components/admin/ship-parts-dialog";
+import { CloseTicketDialog } from "@/components/admin/close-ticket-dialog";
+import { DeleteTicketDialog } from "@/components/admin/delete-ticket-dialog";
 import { fmtIst, fmtIstDate } from "@/lib/format-date";
 
 /* ------------------------------ types ------------------------------------ */
@@ -160,6 +162,8 @@ export default function TicketDetailPage() {
   const [spareCatalog, setSpareCatalog] = useState<SpareCatalogItem[]>([]);
   const [spareError, setSpareError] = useState<string | null>(null);
   const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   // True only when the backend explicitly answered 404 for this reference.
   // Distinct from "ticket is null because a transient fetch failed", which
@@ -1119,6 +1123,41 @@ export default function TicketDetailPage() {
                 error={coEngError}
               />
             )}
+            {/* Owner/Admin-only overrides. */}
+            {isAdmin && (
+              <div className="rounded-xl2 border border-red-200 bg-red-50/40 p-5">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-red-600">
+                  Owner / Admin controls
+                </p>
+                <div className="mt-3 space-y-2">
+                  {ticket.status !== "CLOSED" && (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="md"
+                      className="w-full"
+                      onClick={() => setCloseOpen(true)}
+                    >
+                      Close ticket
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="md"
+                    className="w-full"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    Delete ticket
+                  </Button>
+                </div>
+                <p className="mt-2 text-[11.5px] text-ink-subtle">
+                  Closing reviews what&apos;s pending first. Deleting hides the ticket
+                  everywhere (recoverable by support).
+                </p>
+              </div>
+            )}
+
             <Timeline events={events} />
           </aside>
         </div>
@@ -1129,6 +1168,28 @@ export default function TicketDetailPage() {
         onClose={() => setShipDialogOpen(false)}
         catalog={spareCatalog}
         onSubmit={handleShipParts}
+      />
+
+      <CloseTicketDialog
+        open={closeOpen}
+        reference={reference}
+        authFetch={authFetch}
+        onClose={() => setCloseOpen(false)}
+        onClosed={() => {
+          setCloseOpen(false);
+          fetchAll();
+        }}
+      />
+
+      <DeleteTicketDialog
+        open={deleteOpen}
+        reference={reference}
+        authFetch={authFetch}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => {
+          setDeleteOpen(false);
+          router.push("/admin/tickets");
+        }}
       />
     </AdminShell>
   );
@@ -1968,6 +2029,14 @@ function labelForEvent(e: TicketEvent): string {
       return p.signer_name ? `Sub-engineer signed (${p.signer_name})` : "Sub-engineer signed";
     }
     case "CLOSED": return "Closed";
+    case "FORCE_CLOSED": {
+      const p = (e.payload as { reason?: string } | null) ?? {};
+      return p.reason ? `Force-closed by admin — ${p.reason}` : "Force-closed by admin";
+    }
+    case "DELETED": {
+      const p = (e.payload as { reason?: string } | null) ?? {};
+      return p.reason ? `Deleted by admin — ${p.reason}` : "Deleted by admin";
+    }
     case "PARTS_SHIPPED": {
       const p = (e.payload as { courier?: string; item_count?: number } | null) ?? {};
       const items = p.item_count ? ` (${p.item_count} item${p.item_count === 1 ? "" : "s"})` : "";

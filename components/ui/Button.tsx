@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
-type Variant = "primary" | "ghost" | "outline";
+type Variant = "primary" | "ghost" | "outline" | "danger";
 type Size = "md" | "lg";
 
 const variants: Record<Variant, string> = {
@@ -13,6 +13,10 @@ const variants: Record<Variant, string> = {
   ghost: "bg-transparent text-ink hover:bg-surface-sunken",
   outline:
     "bg-white text-ink border border-line hover:border-ink hover:bg-surface-raised",
+  // Destructive actions (force-close, delete).
+  danger:
+    "bg-red-600 text-white hover:bg-red-700 active:bg-red-800 " +
+    "shadow-soft hover:shadow-lift disabled:bg-red-300",
 };
 
 const sizes: Record<Size, string> = {
