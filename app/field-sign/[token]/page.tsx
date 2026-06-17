@@ -74,7 +74,7 @@ export default function FieldSignPage() {
       setDoc(data);
       setCustomerName(data.contact_name);
       // Pre-fill the engineer — their details were already entered on the
-      // ticket by the SK-POS Support engineer.
+      // ticket by the SK-POS Care engineer.
       setSubId(data.sub_engineers[0]?.id ?? null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load resolution document");
@@ -175,7 +175,7 @@ export default function FieldSignPage() {
           <p className="mt-4 text-[14.5px] leading-relaxed text-ink-muted">
             Both signatures for <strong>{doc.reference}</strong> were submitted on{" "}
             <strong>{fmtIst(doc.engineer_signed_at)}</strong>. The ticket is now closed
-            and the resolution document is available to the SK-POS Support team.
+            and the resolution document is available to the SK-POS Care team.
             This link is no longer active.
           </p>
         </div>
@@ -223,7 +223,7 @@ export default function FieldSignPage() {
               )}
             </Section>
 
-            <Section title="Resolution by SK-POS Support">
+            <Section title="Resolution by SK-POS Care">
               {doc.engineer_name && <Row k="Engineer" v={doc.engineer_name} />}
               {doc.resolved_at && <Row k="Resolved on" v={fmtIst(doc.resolved_at)} />}
               <div className="px-4 py-2.5">
@@ -243,13 +243,13 @@ export default function FieldSignPage() {
           </h2>
           {doc.sub_engineers.length === 0 ? (
             <p className="rounded-xl2 border border-accent-danger/30 bg-white p-3.5 text-[13px] text-accent-danger">
-              No sub-engineers are listed on this ticket. Ask the SK-POS Support
+              No sub-engineers are listed on this ticket. Ask the SK-POS Care
               engineer to add you before signing.
             </p>
           ) : doc.sub_engineers.length === 1 ? (
             <>
               <p className="text-[13px] text-ink-muted">
-                These details were entered for this ticket by the SK-POS Support engineer.
+                These details were entered for this ticket by the SK-POS Care engineer.
               </p>
               <div className="rounded-xl2 border border-line bg-surface-raised px-4 py-3">
                 <p className="text-[14px] font-medium text-ink">
@@ -264,7 +264,7 @@ export default function FieldSignPage() {
             <>
               <p className="text-[13px] text-ink-muted">
                 Confirm which engineer you are — details were entered for this
-                ticket by the SK-POS Support engineer.
+                ticket by the SK-POS Care engineer.
               </p>
               <div className="space-y-2">
                 {doc.sub_engineers.map((s) => {
@@ -388,7 +388,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/" className="flex items-center gap-2.5">
             <BrandMark />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-              SK-POS Support
+              SK-POS Care
             </span>
           </Link>
         </div>

@@ -48,7 +48,7 @@ export default function AdminLoginPage() {
           <BrandMark />
           <div className="flex items-baseline gap-2">
             <span className="font-display text-[20px] font-semibold tracking-tight text-ink">
-              SK-POS Support
+              SK-POS Care
             </span>
             <span className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
               Admin

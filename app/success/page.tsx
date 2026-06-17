@@ -5,7 +5,7 @@ import { BrandMark } from "@/components/brand-mark";
 type SearchParams = { ref?: string; email?: string };
 
 export const metadata = {
-  title: "Ticket submitted — SK-POS Support",
+  title: "Ticket submitted — SK-POS Care",
 };
 
 // Next.js 15+ made `searchParams` a Promise. Await it before accessing values.
@@ -25,7 +25,7 @@ export default async function SuccessPage({
           <Link href="/" className="flex items-center gap-2.5">
             <BrandMark />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-              SK-POS Support
+              SK-POS Care
             </span>
           </Link>
         </header>
@@ -72,7 +72,7 @@ export default async function SuccessPage({
         </section>
 
         <footer className="py-6 text-center text-[12px] text-ink-subtle">
-          © {new Date().getFullYear()} SK-POS Support
+          © {new Date().getFullYear()} SK-POS Care
         </footer>
       </div>
     </main>

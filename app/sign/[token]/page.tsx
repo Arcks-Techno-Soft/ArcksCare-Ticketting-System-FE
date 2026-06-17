@@ -53,7 +53,7 @@ export default function CustomerSignPage() {
         return;
       }
       if (res.status === 410) {
-        setLoadError("This signing link has expired. Please request a new one from SK-POS Support support.");
+        setLoadError("This signing link has expired. Please request a new one from SK-POS Care support.");
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -194,7 +194,7 @@ export default function CustomerSignPage() {
               )}
             </Section>
 
-            <Section title="Resolution by SK-POS Support">
+            <Section title="Resolution by SK-POS Care">
               {doc.engineer_name && <Row k="Engineer" v={doc.engineer_name} />}
               {doc.resolved_at && (
                 <Row k="Resolved on" v={fmtIst(doc.resolved_at)} />
@@ -269,7 +269,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/" className="flex items-center gap-2.5">
             <BrandMark />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-              SK-POS Support
+              SK-POS Care
             </span>
           </Link>
         </div>

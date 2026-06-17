@@ -134,7 +134,7 @@ function Header() {
         <Link href="/" className="flex items-center gap-2.5">
           <BrandMark />
           <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-            SK-POS Support
+            SK-POS Care
           </span>
         </Link>
         <Link
