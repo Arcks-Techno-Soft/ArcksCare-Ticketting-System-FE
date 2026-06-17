@@ -138,10 +138,11 @@ export function AdditionalEngineers({
             ) : (
               <motion.div
                 key="form"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                // NOTE: no overflow-hidden here — the EngineerPicker dropdown is
+                // absolutely positioned and must be able to overflow the card.
               >
                 <div className="space-y-3 p-5">
                   <EngineerPicker
