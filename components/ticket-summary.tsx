@@ -60,7 +60,14 @@ export function TicketSummary({ values, attachments = [] }: Props) {
         <div className="divide-y divide-line">
           <Block title="Customer">
             <Row label="Business" value={values.business_name} />
-            <Row label="Type" value={values.business_type} />
+            <Row
+              label="Type"
+              value={
+                values.business_type === "Other"
+                  ? values.business_type_other || values.business_type
+                  : values.business_type
+              }
+            />
             <Row label="Contact" value={values.contact_name} />
             <Row label="Phone" value={values.phone} />
             <Row label="Email" value={values.email} />
