@@ -13,6 +13,10 @@ import { Textarea } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
 import { WorkNotes, type WorkNote } from "@/components/admin/work-notes";
 import {
+  AdditionalEngineers,
+  type AdditionalEngineer,
+} from "@/components/admin/additional-engineers";
+import {
   SubEngineers,
   type SubEngineer,
   type RosterContact,
@@ -82,6 +86,7 @@ type AdminTicket = {
   } | null;
 
   sub_engineers?: SubEngineer[];
+  additional_engineers?: AdditionalEngineer[];
 };
 
 type TicketEvent = {
@@ -148,6 +153,7 @@ export default function TicketDetailPage() {
   const [resolveSummary, setResolveSummary] = useState("");
   const [showResolveForm, setShowResolveForm] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
+  const [coEngError, setCoEngError] = useState<string | null>(null);
   const [roster, setRoster] = useState<RosterContact[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [charges, setCharges] = useState<ChargesSummary | null>(null);
@@ -384,6 +390,54 @@ export default function TicketDetailPage() {
       setActing(null);
     }
   };
+  const handleAddCoEngineer = async (engineerId: number) => {
+    setCoEngError(null);
+    setActing("co-eng-add");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/engineers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ engineer_id: engineerId }),
+        }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setCoEngError(e instanceof Error ? e.message : "Failed to add engineer");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleRemoveCoEngineer = async (engineerId: number) => {
+    setCoEngError(null);
+    setActing("co-eng-remove");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/engineers/${engineerId}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok && res.status !== 204) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setCoEngError(e instanceof Error ? e.message : "Failed to remove engineer");
+    } finally {
+      setActing(null);
+    }
+  };
+
   const refreshCharges = useCallback(async () => {
     try {
       const res = await authFetch(
@@ -1051,6 +1105,20 @@ export default function TicketDetailPage() {
               onSetFee={handleSetSubEngineerFee}
               error={subError}
             />
+            {/* Co-assigned app users — shown once a primary engineer exists. */}
+            {ticket.assigned_engineer && (
+              <AdditionalEngineers
+                items={ticket.additional_engineers ?? []}
+                engineers={engineers}
+                primaryId={ticket.assigned_engineer.id}
+                canManage={canModerate && ticket.status !== "CLOSED"}
+                busy={acting === "co-eng-add" || acting === "co-eng-remove"}
+                matchDistrict={ticket.city}
+                onAdd={handleAddCoEngineer}
+                onRemove={handleRemoveCoEngineer}
+                error={coEngError}
+              />
+            )}
             <Timeline events={events} />
           </aside>
         </div>
@@ -1880,6 +1948,10 @@ function labelForEvent(e: TicketEvent): string {
       return `Assigned to ${(e.payload as { engineer_name?: string } | null)?.engineer_name ?? "engineer"}`;
     case "REASSIGNED":
       return `Reassigned to ${(e.payload as { engineer_name?: string } | null)?.engineer_name ?? "engineer"}`;
+    case "ENGINEER_ADDED":
+      return `Added ${(e.payload as { engineer_name?: string } | null)?.engineer_name ?? "engineer"} as co-engineer`;
+    case "ENGINEER_REMOVED":
+      return `Removed ${(e.payload as { engineer_name?: string } | null)?.engineer_name ?? "engineer"} from co-engineers`;
     case "WARRANTY_UPDATED":
       return `Warranty ${(e.payload as { from?: string; to?: string } | null)?.from} → ${(e.payload as { from?: string; to?: string } | null)?.to}`;
     case "ACCEPTED": return "Accepted by engineer";
