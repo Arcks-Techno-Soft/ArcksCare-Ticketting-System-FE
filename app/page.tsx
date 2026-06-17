@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { BrandMark } from "@/components/brand-mark";
+import { Wordmark } from "@/components/wordmark";
 
 export default function Home() {
   return (
@@ -16,12 +16,9 @@ export default function Home() {
       />
 
       {/* Top bar */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-6 sm:py-6">
         <div className="flex items-center gap-2.5">
-          <BrandMark />
-          <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-            SK-POS Care
-          </span>
+          <Wordmark />
         </div>
         <nav className="flex items-center gap-4">
           <Link
