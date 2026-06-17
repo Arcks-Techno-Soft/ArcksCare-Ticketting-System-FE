@@ -20,7 +20,7 @@ export default function Home() {
         <div className="flex items-center gap-2.5">
           <BrandMark />
           <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-            SK-POS Support
+            SK-POS Care
           </span>
         </div>
         <nav className="flex items-center gap-4">
@@ -114,7 +114,7 @@ export default function Home() {
 
       <footer className="border-t border-line py-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 text-[12px] text-ink-subtle">
-          <span>© {new Date().getFullYear()} SK-POS Support</span>
+          <span>© {new Date().getFullYear()} SK-POS Care</span>
           <span>Made for restaurants, hotels, retail & cloud kitchens</span>
         </div>
       </footer>

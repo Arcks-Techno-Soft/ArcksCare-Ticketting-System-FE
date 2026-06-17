@@ -118,7 +118,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <BrandMark className="h-7 w-7 shrink-0" />
             <div className={`flex items-baseline gap-2 overflow-hidden ${labelHiddenClass}`}>
               <span className="font-display text-[18px] font-semibold tracking-tight text-ink">
-                SK-POS Support
+                SK-POS Care
               </span>
               <span className="text-[10.5px] uppercase tracking-[0.16em] text-ink-subtle">
                 Admin

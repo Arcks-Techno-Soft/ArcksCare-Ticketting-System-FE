@@ -3,7 +3,7 @@ import { TicketForm } from "@/components/ticket-form";
 import { BrandMark } from "@/components/brand-mark";
 
 export const metadata = {
-  title: "Raise a ticket — SK-POS Support",
+  title: "Raise a ticket — SK-POS Care",
   description:
     "Submit a support request for your hardware. A specialist will respond shortly.",
 };
@@ -16,7 +16,7 @@ export default function RaiseTicketPage() {
           <Link href="/" className="flex items-center gap-2.5">
             <BrandMark />
             <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-              SK-POS Support
+              SK-POS Care
             </span>
           </Link>
           <div className="flex items-center gap-5">

@@ -3,7 +3,7 @@ import { ClientRedirect } from "./client-redirect";
 /**
  * Smart redirect for WhatsApp notification links.
  *
- * On Android: fires an Android intent URL — if the SK-POS Support app is
+ * On Android: fires an Android intent URL — if the SK-POS Care app is
  * installed, the OS opens it directly to the ticket; otherwise Android
  * automatically falls back to the web URL.
  *
