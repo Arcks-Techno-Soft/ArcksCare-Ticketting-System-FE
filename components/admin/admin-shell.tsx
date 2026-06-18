@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Settings,
   BarChart3,
+  FileBarChart,
   LogOut,
   Wrench,
   PlusCircle,
@@ -54,6 +55,7 @@ const NAV_ITEMS: NavItem[] = [
     matchPrefix: "/admin/installations",
   },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["ADMIN"] },
+  { label: "Reports", href: "/admin/reports", icon: FileBarChart, roles: ["ADMIN"], matchPrefix: "/admin/reports" },
   { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["ADMIN"], matchPrefix: "/admin/settings" },
 ];
 
