@@ -39,6 +39,7 @@ type Installation = {
   phone: string;
   email?: string | null;
   invoice_number: string;
+  products_for_installation?: string | null;
   invoice_document?: {
     filename: string;
     content_type: string;
@@ -535,6 +536,16 @@ export default function InstallationDetailPage() {
                   )
                 }
               />
+              {inst.products_for_installation && (
+                <Row
+                  label="Products"
+                  value={
+                    <span className="whitespace-pre-line text-[13.5px]">
+                      {inst.products_for_installation}
+                    </span>
+                  }
+                />
+              )}
               <Row
                 label="Invoice doc"
                 value={
