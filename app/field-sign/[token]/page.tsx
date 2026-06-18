@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, FieldGroup } from "@/components/ui/Field";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
+import { FileDropZone, type SelectedFile } from "@/components/file-drop-zone";
 import { fmtIst } from "@/lib/format-date";
 import { BrandMark } from "@/components/brand-mark";
 
@@ -55,6 +56,7 @@ export default function FieldSignPage() {
   const [engEmpty, setEngEmpty] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [media, setMedia] = useState<SelectedFile[]>([]);
   const custPadRef = useRef<SignaturePadHandle>(null);
   const engPadRef = useRef<SignaturePadHandle>(null);
 
@@ -111,6 +113,8 @@ export default function FieldSignPage() {
     fd.append("customer_signer_name", customerName.trim());
     fd.append("customer_signature", custBlob, "customer-signature.png");
     fd.append("engineer_signature", engBlob, "subengineer-signature.png");
+    // Optional photos/videos of the on-site work — never required.
+    media.forEach(({ file }) => fd.append("media", file, file.name));
     try {
       const res = await fetch(`${API_BASE}/api/v1/sign/${token}/field`, {
         method: "POST",
@@ -323,6 +327,22 @@ export default function FieldSignPage() {
           </FieldGroup>
 
           <SignaturePad ref={custPadRef} onChangeIsEmpty={setCustEmpty} height={160} />
+        </div>
+
+        {/* ---- Photos & videos (optional) ---- */}
+        <div className="mt-12 space-y-6">
+          <div>
+            <h2 className="font-display text-2xl font-medium tracking-tight text-ink">
+              Photos &amp; videos{" "}
+              <span className="text-[15px] font-normal text-ink-subtle">(optional)</span>
+            </h2>
+            <p className="mt-1 text-[13px] text-ink-muted">
+              Add photos or short videos of the completed work if you&apos;d like.
+              These are optional and won&apos;t hold up sign-off.
+            </p>
+          </div>
+
+          <FileDropZone files={media} onChange={setMedia} />
         </div>
 
         {/* ---- Sub-engineer signature ---- */}
