@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useAuth, API_BASE_URL } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select, FieldError } from "@/components/ui/Field";
+import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
 import { BUSINESS_TYPES, INDIAN_STATES } from "@/lib/options";
 import type { LocationPayload } from "@/components/address-map";
@@ -28,6 +28,7 @@ type FormState = {
   phone: string;
   email: string;
   invoice_number: string;
+  products_for_installation: string;
   address_line1: string;
   address_line2: string;
   address_line3: string;
@@ -43,6 +44,7 @@ const EMPTY: FormState = {
   phone: "",
   email: "",
   invoice_number: "",
+  products_for_installation: "",
   address_line1: "",
   address_line2: "",
   address_line3: "",
@@ -133,6 +135,8 @@ export default function NewInstallationPage() {
     if (form.phone.trim().length < 7) return setError("Phone number is required.");
     if (invoiceMode === "enter" && !form.invoice_number.trim())
       return setError("Enter the invoice number, or choose “To be added later”.");
+    if (form.products_for_installation.trim().length < 2)
+      return setError("List the products to be installed.");
     if (form.address_line1.trim().length < 3) return setError("Address line 1 is required.");
     if (form.city.trim().length < 2) return setError("City is required.");
     if (!form.state) return setError("Select a state.");
@@ -148,6 +152,7 @@ export default function NewInstallationPage() {
       phone: form.phone.trim(),
       email: form.email.trim() || null,
       invoice_number: invoiceValue,
+      products_for_installation: form.products_for_installation.trim(),
       address_line1: form.address_line1.trim(),
       address_line2: form.address_line2.trim() || null,
       address_line3: form.address_line3.trim() || null,
@@ -322,6 +327,20 @@ export default function NewInstallationPage() {
                 />
               )}
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="products" required>Products for installation</Label>
+            <Textarea
+              id="products"
+              rows={4}
+              value={form.products_for_installation}
+              onChange={(e) => update("products_for_installation", e.target.value)}
+              placeholder={"POS Machine x 2\nThermal Printer x 1\nCash Drawer x 1"}
+            />
+            <p className="mt-1 text-[12px] text-ink-subtle">
+              One product per line — name and quantity.
+            </p>
           </div>
 
           <div>
