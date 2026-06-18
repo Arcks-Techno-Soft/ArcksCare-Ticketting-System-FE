@@ -85,6 +85,15 @@ type AdminTicket = {
     pdf_generated_at?: string | null;
     field_sign_link_generated_at?: string | null;
     customer_sign_token: string;
+    media?: {
+      id: number;
+      kind: "photo" | "video";
+      filename: string;
+      content_type: string;
+      size_bytes: number;
+      storage_url: string;
+      uploaded_at: string;
+    }[];
   } | null;
 
   sub_engineers?: SubEngineer[];
@@ -1009,6 +1018,58 @@ export default function TicketDetailPage() {
                       </span>
                     </a>
                   ))}
+                </div>
+              </DetailBlock>
+            )}
+
+            {!!ticket.resolution?.media?.length && (
+              <DetailBlock title={`Field photos & videos (${ticket.resolution.media.length})`}>
+                <div className="grid grid-cols-2 gap-3 px-2 py-2 sm:grid-cols-3">
+                  {ticket.resolution.media.map((m) =>
+                    m.kind === "video" ? (
+                      <a
+                        key={m.id}
+                        href={m.storage_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group relative block overflow-hidden rounded-lg border border-line bg-black"
+                      >
+                        <video
+                          src={m.storage_url}
+                          className="aspect-square w-full object-cover opacity-90"
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow-soft">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="#0A0A0A" aria-hidden>
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>
+                        </span>
+                        <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white">
+                          Video
+                        </span>
+                      </a>
+                    ) : (
+                      <a
+                        key={m.id}
+                        href={m.storage_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block overflow-hidden rounded-lg border border-line"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={m.storage_url}
+                          alt={m.filename}
+                          className="aspect-square w-full object-cover transition-transform hover:scale-[1.03]"
+                          loading="lazy"
+                        />
+                      </a>
+                    )
+                  )}
                 </div>
               </DetailBlock>
             )}
