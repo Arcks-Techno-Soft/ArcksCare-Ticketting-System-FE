@@ -9,15 +9,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth, API_BASE_URL } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
-import { Textarea, Label, Input, Select } from "@/components/ui/Field";
+import { Label, Input, Select } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
-import {
-  NoteAttachmentGrid,
-  NoteImagePicker,
-  type NoteAttachmentView,
-  type PickedImage,
-} from "@/components/admin/note-images";
+import { AttemptsBlock, type AttemptView } from "@/components/admin/attempts-block";
 import { INDIAN_STATES } from "@/lib/options";
 import type { LocationPayload } from "@/components/address-map";
 import { fmtIst } from "@/lib/format-date";
@@ -71,15 +66,9 @@ type Installation = {
     pdf_generated_at?: string | null;
     customer_sign_token: string;
   } | null;
+  attempts?: AttemptView[];
 };
 
-type Note = {
-  id: number;
-  body: string;
-  created_at: string;
-  author: { id: number; name: string; role: string; username: string };
-  attachments?: NoteAttachmentView[];
-};
 
 type InstallEvent = {
   id: number;
@@ -105,15 +94,12 @@ export default function InstallationDetailPage() {
   const { ready, user, authFetch } = useAuth();
 
   const [inst, setInst] = useState<Installation | null>(null);
-  const [notes, setNotes] = useState<Note[]>([]);
   const [events, setEvents] = useState<InstallEvent[]>([]);
   const [engineers, setEngineers] = useState<Engineer[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
-  const [newNote, setNewNote] = useState("");
-  const [noteImages, setNoteImages] = useState<PickedImage[]>([]);
   const [editingInvoice, setEditingInvoice] = useState(false);
   const [invoiceDraft, setInvoiceDraft] = useState("");
 
@@ -124,9 +110,8 @@ export default function InstallationDetailPage() {
   const fetchAll = useCallback(async () => {
     if (!reference) return;
     try {
-      const [i, n, e, eng] = await Promise.all([
+      const [i, e, eng] = await Promise.all([
         authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}`),
-        authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}/notes`),
         authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}/events`),
         authFetch(`${API_BASE_URL}/api/v1/admin/engineers`),
       ]);
@@ -137,7 +122,6 @@ export default function InstallationDetailPage() {
       }
       if (!i.ok) throw new Error(`Server ${i.status}`);
       setInst(await i.json());
-      setNotes(n.ok ? await n.json() : []);
       setEvents(e.ok ? await e.json() : []);
       setEngineers(eng.ok ? await eng.json() : []);
     } catch (err) {
@@ -202,38 +186,46 @@ export default function InstallationDetailPage() {
 
   const handleSelfAssign = () => callAction("self-assign", "/self-assign");
 
-  const handleAddNote = async () => {
-    const body = newNote.trim();
-    if (body.length < 2) return;
-    setError(null);
-    setActing("note");
+  // Attempt actions. These throw on failure so AttemptsBlock surfaces the
+  // message inline; on success they refetch the detail.
+  const parseErr = async (res: Response): Promise<string> => {
+    const t = await res.text();
     try {
-      const fd = new FormData();
-      fd.append("body", body);
-      for (const p of noteImages) fd.append("images", p.file, p.file.name);
-      const res = await authFetch(
-        `${API_BASE_URL}/api/v1/admin/installations/${reference}/notes`,
-        { method: "POST", body: fd }
-      );
-      if (!res.ok) {
-        const t = await res.text();
-        let msg = `${res.status}`;
-        try {
-          msg = JSON.parse(t).detail ?? msg;
-        } catch {
-          msg = t.slice(0, 200);
-        }
-        throw new Error(msg);
-      }
-      setNewNote("");
-      noteImages.forEach((p) => URL.revokeObjectURL(p.previewUrl));
-      setNoteImages([]);
-      await fetchAll();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Note failed");
-    } finally {
-      setActing(null);
+      const j = JSON.parse(t);
+      return typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+    } catch {
+      return t.slice(0, 200) || `Server ${res.status}`;
     }
+  };
+
+  const handleStartAttempt = async () => {
+    const res = await authFetch(
+      `${API_BASE_URL}/api/v1/admin/installations/${reference}/attempts`,
+      { method: "POST" }
+    );
+    if (!res.ok) throw new Error(await parseErr(res));
+    await fetchAll();
+  };
+
+  const handleEndAttempt = async (attemptId: number) => {
+    const res = await authFetch(
+      `${API_BASE_URL}/api/v1/admin/installations/${reference}/attempts/${attemptId}/end`,
+      { method: "POST" }
+    );
+    if (!res.ok) throw new Error(await parseErr(res));
+    await fetchAll();
+  };
+
+  const handleAttemptNote = async (body: string, files: File[]) => {
+    const fd = new FormData();
+    fd.append("body", body);
+    for (const f of files) fd.append("images", f, f.name);
+    const res = await authFetch(
+      `${API_BASE_URL}/api/v1/admin/installations/${reference}/notes`,
+      { method: "POST", body: fd }
+    );
+    if (!res.ok) throw new Error(await parseErr(res));
+    await fetchAll();
   };
 
   const handleClose = () => {
@@ -359,8 +351,12 @@ export default function InstallationDetailPage() {
   const canModerate = user.role === "ADMIN" || user.role === "MANAGER";
   const isAssignee = inst.assigned_engineer?.id === user.id;
   const canAssign = canModerate && (inst.status === "NEW" || inst.status === "ASSIGNED");
-  const canAddNote = (canModerate || isAssignee) && inst.status === "ASSIGNED";
-  const canClose = isAssignee && inst.status === "ASSIGNED";
+  const canWorkAttempts = (canModerate || isAssignee) && inst.status === "ASSIGNED";
+  const attempts = inst.attempts ?? [];
+  const openAttempt = attempts.find((a) => !a.ended_at) ?? null;
+  const endedAttempts = attempts.filter((a) => a.ended_at).length;
+  // Finishing requires at least one completed attempt and none still open.
+  const canClose = isAssignee && inst.status === "ASSIGNED" && !openAttempt && endedAttempts > 0;
   const customerSigned = !!inst.resolution?.customer_signed_at;
   const engineerSigned = !!inst.resolution?.engineer_signed_at;
   const canCaptureCustomer = isAssignee && inst.status === "COMPLETED" && !customerSigned;
@@ -623,15 +619,13 @@ export default function InstallationDetailPage() {
               )}
             </DetailBlock>
 
-            <NotesBlock
-              notes={notes}
-              canAdd={canAddNote}
-              busy={acting === "note"}
-              draft={newNote}
-              setDraft={setNewNote}
-              images={noteImages}
-              setImages={setNoteImages}
-              onAdd={handleAddNote}
+            <AttemptsBlock
+              attempts={attempts}
+              canWork={canWorkAttempts}
+              canStart={canWorkAttempts}
+              onStart={handleStartAttempt}
+              onEnd={handleEndAttempt}
+              onAddNote={handleAttemptNote}
             />
 
             <Timeline events={events} />
@@ -688,23 +682,33 @@ export default function InstallationDetailPage() {
                 </div>
               )}
 
-              {/* Close button */}
-              {canClose && (
+              {/* Finish button — gated on at least one completed attempt */}
+              {isAssignee && inst.status === "ASSIGNED" && (
                 <div className="mt-5 border-t border-line pt-5">
-                  <p className="text-[12.5px] text-ink-muted">
-                    When the install is done on-site, close it. You&apos;ll capture both
-                    signatures next.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="md"
-                    loading={acting === "close"}
-                    onClick={handleClose}
-                    className="mt-3 w-full"
-                  >
-                    Close installation
-                  </Button>
+                  {canClose ? (
+                    <>
+                      <p className="text-[12.5px] text-ink-muted">
+                        When the install is done on-site, finish it. You&apos;ll capture
+                        both signatures next.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="md"
+                        loading={acting === "close"}
+                        onClick={handleClose}
+                        className="mt-3 w-full"
+                      >
+                        Finish installation
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="text-[12.5px] text-ink-muted">
+                      {openAttempt
+                        ? "End the open attempt before finishing the installation."
+                        : "Start and end at least one attempt before finishing the installation."}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1013,83 +1017,6 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="grid grid-cols-[130px_1fr] items-baseline gap-3 px-4 py-2.5">
       <span className="text-[12.5px] text-ink-subtle">{label}</span>
       <span className="text-[14px] text-ink">{value}</span>
-    </div>
-  );
-}
-
-function NotesBlock({
-  notes,
-  canAdd,
-  busy,
-  draft,
-  setDraft,
-  images,
-  setImages,
-  onAdd,
-}: {
-  notes: Note[];
-  canAdd: boolean;
-  busy: boolean;
-  draft: string;
-  setDraft: (s: string) => void;
-  images: PickedImage[];
-  setImages: (next: PickedImage[]) => void;
-  onAdd: () => void;
-}) {
-  return (
-    <div className="rounded-xl2 border border-line bg-white shadow-soft">
-      <div className="flex items-center justify-between border-b border-line bg-surface-raised px-5 py-3">
-        <span className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
-          Work notes
-        </span>
-        <span className="text-[11px] text-ink-subtle">Internal only</span>
-      </div>
-
-      <ol className="divide-y divide-line/60">
-        {notes.length === 0 ? (
-          <li className="px-5 py-4 text-[13px] text-ink-subtle">No notes yet.</li>
-        ) : (
-          notes.map((n) => (
-            <li key={n.id} className="px-5 py-3.5">
-              <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink">
-                {n.body}
-              </p>
-              {n.attachments && n.attachments.length > 0 && (
-                <NoteAttachmentGrid attachments={n.attachments} />
-              )}
-              <p className="mt-1 text-[11.5px] text-ink-subtle">
-                {n.author.name}
-                <span className="mx-1">·</span>
-                {fmtIst(n.created_at)}
-              </p>
-            </li>
-          ))
-        )}
-      </ol>
-
-      {canAdd && (
-        <div className="space-y-3 border-t border-line p-5">
-          <Textarea
-            placeholder="What did you do on-site? Any issues?"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            className="min-h-[90px]"
-          />
-          <NoteImagePicker images={images} onChange={setImages} />
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              disabled={draft.trim().length < 2}
-              loading={busy}
-              onClick={onAdd}
-            >
-              Save note
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
