@@ -34,12 +34,22 @@ type NavItem = {
   roles?: string[];
   /** href prefixes that should mark this item active. */
   matchPrefix?: string;
+  /** Extra prefixes that also mark this item active (longest match wins). */
+  matchPrefixes?: string[];
   /** Optional per-role override of `label` (e.g. engineers see a different word). */
   labelByRole?: Record<string, string>;
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/admin/tickets", icon: LayoutDashboard, matchPrefix: "/admin/tickets" },
+  {
+    label: "Dashboard",
+    href: "/admin/tickets",
+    icon: LayoutDashboard,
+    // The dashboard now hosts both views via an in-page toggle, so the
+    // installations list highlights "Dashboard" too. The /new form has a
+    // longer prefix and wins, keeping "New Installation" lit on the form.
+    matchPrefixes: ["/admin/tickets", "/admin/installations"],
+  },
   {
     label: "New Ticket",
     href: "/admin/tickets/new",
@@ -48,11 +58,10 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "New Installation",
-    labelByRole: { ENGINEER: "Installations" },
-    href: "/admin/installations",
+    href: "/admin/installations/new",
     icon: Wrench,
     roles: ["ADMIN", "MANAGER", "ENGINEER"],
-    matchPrefix: "/admin/installations",
+    matchPrefix: "/admin/installations/new",
   },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["ADMIN"] },
   { label: "Reports", href: "/admin/reports", icon: FileBarChart, roles: ["ADMIN"], matchPrefix: "/admin/reports" },
@@ -78,15 +87,18 @@ export function AdminShell({ children }: { children: ReactNode }) {
   );
 
   // Longest-prefix wins so /admin/tickets/new highlights "New Ticket" rather
-  // than "Dashboard" (whose prefix /admin/tickets also matches).
+  // than "Dashboard" (whose prefix /admin/tickets also matches), and
+  // /admin/installations/new highlights "New Installation" rather than the
+  // "Dashboard" item that also claims /admin/installations.
+  const prefixesFor = (item: NavItem) =>
+    item.matchPrefixes ?? [item.matchPrefix ?? item.href];
+  const bestMatchLen = (item: NavItem) =>
+    prefixesFor(item)
+      .filter((p) => pathname === item.href || pathname.startsWith(p))
+      .reduce((max, p) => Math.max(max, p.length), -1);
   const activeHref = visibleItems
-    .filter((item) => {
-      const prefix = item.matchPrefix ?? item.href;
-      return pathname === item.href || pathname.startsWith(prefix);
-    })
-    .sort(
-      (a, b) => (b.matchPrefix ?? b.href).length - (a.matchPrefix ?? a.href).length
-    )[0]?.href;
+    .filter((item) => bestMatchLen(item) >= 0)
+    .sort((a, b) => bestMatchLen(b) - bestMatchLen(a))[0]?.href;
 
   // Label/brand text is hidden only when the desktop rail is collapsed; on
   // mobile the drawer is always full-width so labels stay visible.
