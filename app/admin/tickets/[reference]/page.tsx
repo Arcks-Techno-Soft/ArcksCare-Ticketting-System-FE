@@ -11,7 +11,7 @@ import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/st
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
-import { WorkNotes, type WorkNote } from "@/components/admin/work-notes";
+import { AttemptsBlock, type AttemptView } from "@/components/admin/attempts-block";
 import {
   AdditionalEngineers,
   type AdditionalEngineer,
@@ -98,6 +98,7 @@ type AdminTicket = {
 
   sub_engineers?: SubEngineer[];
   additional_engineers?: AdditionalEngineer[];
+  attempts?: AttemptView[];
 };
 
 type TicketEvent = {
@@ -156,7 +157,6 @@ export default function TicketDetailPage() {
   const [ticket, setTicket] = useState<AdminTicket | null>(null);
   const [events, setEvents] = useState<TicketEvent[]>([]);
   const [engineers, setEngineers] = useState<Engineer[]>([]);
-  const [notes, setNotes] = useState<WorkNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
@@ -192,11 +192,10 @@ export default function TicketDetailPage() {
   const fetchAll = useCallback(async () => {
     if (!reference) return;
     try {
-      const [t, e, eng, n, s, c, sh] = await Promise.all([
+      const [t, e, eng, s, c, sh] = await Promise.all([
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/events`),
         authFetch(`${API_BASE_URL}/api/v1/admin/engineers`),
-        authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/notes`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/sub-engineer-suggestions`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/charges`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/shipments`),
@@ -243,7 +242,6 @@ export default function TicketDetailPage() {
       setTicket(await t.json());
       setEvents(e.ok ? await e.json() : []);
       setEngineers(eng.ok ? await eng.json() : []);
-      setNotes(n.ok ? await n.json() : []);
       setRoster(s.ok ? ((await s.json()) as RosterContact[]) : []);
       setCharges(c.ok ? ((await c.json()) as ChargesSummary) : null);
       setShipments(sh.ok ? ((await sh.json()) as Shipment[]) : []);
@@ -777,33 +775,46 @@ export default function TicketDetailPage() {
     }
   };
 
-  const handleAddNote = async (body: string, images: File[]) => {
-    setActionError(null);
-    setActing("note");
+  // Attempt actions. These throw on failure so AttemptsBlock surfaces the
+  // message inline; on success they refetch the detail.
+  const parseAttemptErr = async (res: Response): Promise<string> => {
+    const t = await res.text();
     try {
-      const fd = new FormData();
-      fd.append("body", body);
-      for (const f of images) fd.append("images", f, f.name);
-      const res = await authFetch(
-        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/notes`,
-        { method: "POST", body: fd }
-      );
-      if (!res.ok) {
-        const t = await res.text();
-        let msg = `${res.status}`;
-        try {
-          msg = JSON.parse(t).detail ?? msg;
-        } catch {
-          msg = t.slice(0, 200);
-        }
-        throw new Error(msg);
-      }
-      await fetchAll();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Note failed");
-    } finally {
-      setActing(null);
+      const j = JSON.parse(t);
+      return typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+    } catch {
+      return t.slice(0, 200) || `Server ${res.status}`;
     }
+  };
+
+  const handleStartAttempt = async () => {
+    const res = await authFetch(
+      `${API_BASE_URL}/api/v1/admin/tickets/${reference}/attempts`,
+      { method: "POST" }
+    );
+    if (!res.ok) throw new Error(await parseAttemptErr(res));
+    await fetchAll();
+  };
+
+  const handleEndAttempt = async (attemptId: number) => {
+    const res = await authFetch(
+      `${API_BASE_URL}/api/v1/admin/tickets/${reference}/attempts/${attemptId}/end`,
+      { method: "POST" }
+    );
+    if (!res.ok) throw new Error(await parseAttemptErr(res));
+    await fetchAll();
+  };
+
+  const handleAttemptNote = async (body: string, files: File[]) => {
+    const fd = new FormData();
+    fd.append("body", body);
+    for (const f of files) fd.append("images", f, f.name);
+    const res = await authFetch(
+      `${API_BASE_URL}/api/v1/admin/tickets/${reference}/notes`,
+      { method: "POST", body: fd }
+    );
+    if (!res.ok) throw new Error(await parseAttemptErr(res));
+    await fetchAll();
   };
 
   /* --------------------------- render --------------------------------- */
@@ -1122,14 +1133,19 @@ export default function TicketDetailPage() {
                 onMarkDelivered={handleMarkDelivered}
               />
             )}
-            <WorkNotes
-              notes={notes}
-              canAdd={
+            <AttemptsBlock
+              attempts={ticket.attempts ?? []}
+              canWork={
                 ticket.assigned_engineer?.id === user.id &&
                 ticket.status === "RESOLVING"
               }
-              adding={acting === "note"}
-              onSubmit={handleAddNote}
+              canStart={
+                ticket.assigned_engineer?.id === user.id &&
+                (ticket.status === "ACCEPTED" || ticket.status === "RESOLVING")
+              }
+              onStart={handleStartAttempt}
+              onEnd={handleEndAttempt}
+              onAddNote={handleAttemptNote}
             />
             <Spares
               charges={charges}
@@ -1469,6 +1485,10 @@ function ActionPanel(props: {
   const canAccept = isMyTicket && ticket.status === "ASSIGNED";
   const canStart = isMyTicket && ticket.status === "ACCEPTED";
   const canResolve = isMyTicket && ticket.status === "RESOLVING";
+  // Resolving requires at least one completed attempt and none still open.
+  const openAttempt = (ticket.attempts ?? []).find((a) => !a.ended_at) ?? null;
+  const endedAttempts = (ticket.attempts ?? []).filter((a) => a.ended_at).length;
+  const attemptsReady = !openAttempt && endedAttempts > 0;
 
   // Sub-engineers can be added once ticket is acknowledged, by assignee / Admin / Manager.
   const isAssignee = ticket.assigned_engineer?.id === currentUserId;
@@ -1649,7 +1669,15 @@ function ActionPanel(props: {
         </div>
       )}
 
-      {canResolve && (
+      {canResolve && !attemptsReady && (
+        <div className="rounded-md border border-line bg-surface-raised p-3 text-[12.5px] text-ink-muted">
+          {openAttempt
+            ? "End the open attempt in Work attempts below before resolving."
+            : "Log at least one attempt in Work attempts below before resolving."}
+        </div>
+      )}
+
+      {canResolve && attemptsReady && (
         <div>
           {!showResolveForm ? (
             <Button
