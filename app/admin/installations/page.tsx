@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 
 import { useAuth, API_BASE_URL } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { DashboardViewTabs } from "@/components/admin/dashboard-tabs";
 import { Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { fmtIst, fmtIstDate } from "@/lib/format-date";
@@ -104,6 +105,9 @@ export default function InstallationsListPage() {
   return (
     <AdminShell>
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
+        <div className="mb-6">
+          <DashboardViewTabs />
+        </div>
         <div className="flex items-end justify-between gap-4 border-b border-line pb-6">
           <div>
             <p className="text-[12px] uppercase tracking-[0.18em] text-ink-subtle">
