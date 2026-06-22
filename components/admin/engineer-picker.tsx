@@ -20,7 +20,7 @@ export type Engineer = {
   name: string;
   role: string;
   district?: string | null;
-  /** Active (not-closed) tickets currently assigned to this engineer. */
+  /** Open workload: active tickets + pending installations assigned to them. */
   open_ticket_count?: number;
 };
 
@@ -32,7 +32,7 @@ const byAvailability = (a: Engineer, b: Engineer) =>
 function loadCaption(count: number | undefined): { text: string; free: boolean } {
   const n = count ?? 0;
   if (n === 0) return { text: "Recommended · Available", free: true };
-  return { text: `${n} assigned ticket${n === 1 ? "" : "s"} already`, free: false };
+  return { text: `${n} open job${n === 1 ? "" : "s"}`, free: false };
 }
 
 type Props = {
