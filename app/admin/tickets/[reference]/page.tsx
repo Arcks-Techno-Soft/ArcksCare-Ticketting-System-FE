@@ -60,8 +60,10 @@ type AdminTicket = {
   status: string;
   warranty_status: string;
   service_type: string;
-  // Out-of-warranty payment tracking. null = legacy ticket (never gated).
+  // Payment tracking. payment_status null = legacy ticket (never gated).
+  // payment_required is the backend-computed gate (OOW, or covered + charges).
   payment_status?: "PENDING" | "COLLECTED" | null;
+  payment_required?: boolean;
   payment_amount_inr?: number | null;
   payment_collected_at?: string | null;
   payment_collected_by?: Engineer | null;
@@ -1545,13 +1547,15 @@ function ActionPanel(props: {
     ticket.status === "CLOSED" &&
     !!ticket.resolution?.pdf_generated_at;
 
-  // Out-of-warranty payment tracking. payment_status is null on legacy tickets.
+  // `payment_required` is computed by the backend (OOW, or covered + charges).
+  // Out-of-warranty additionally requires a positive amount.
   const paymentPending =
+    !!ticket.payment_required &&
     ticket.status === "RESOLVED" &&
-    ticket.warranty_status === "OUT_OF_WARRANTY" &&
     ticket.payment_status === "PENDING";
   const paymentCollected = ticket.payment_status === "COLLECTED";
   const canCollectPayment = canModerate || isAssignee;
+  const requirePositivePayment = ticket.warranty_status === "OUT_OF_WARRANTY";
 
   const hasAnyAction =
     canAcknowledge || canAssign || isAdmin || canAccept || canStart || canResolve ||
@@ -1808,14 +1812,16 @@ function ActionPanel(props: {
             </span>
           </div>
           <p className="mt-2 text-[12.5px] text-ink-muted">
-            Signed off but payment not collected — record the amount to close the ticket.
+            {customerSigned && engineerSigned
+              ? "Signed off — payment not collected. Record the amount to close the ticket."
+              : "Payment due — collect after sign-off."}
           </p>
-          {canCollectPayment && (
+          {customerSigned && engineerSigned && canCollectPayment && (
             <div className="mt-3 flex items-center gap-2">
               <span className="text-ink-subtle">₹</span>
               <input
                 type="number"
-                min={0}
+                min={requirePositivePayment ? 1 : 0}
                 value={paymentDraft ?? String(defaultPaymentAmount)}
                 onChange={(e) => setPaymentDraft(e.target.value)}
                 className="w-28 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
@@ -1826,9 +1832,18 @@ function ActionPanel(props: {
                 variant="primary"
                 size="md"
                 loading={acting === "collect-payment"}
+                disabled={(() => {
+                  const a = parseInt((paymentDraft ?? String(defaultPaymentAmount)) || "0", 10);
+                  return requirePositivePayment ? a <= 0 : a < 0;
+                })()}
                 onClick={() => {
-                  const raw = paymentDraft ?? String(defaultPaymentAmount);
-                  onCollectPayment(Math.max(0, parseInt(raw || "0", 10)));
+                  const amount = parseInt(
+                    (paymentDraft ?? String(defaultPaymentAmount)) || "0",
+                    10
+                  );
+                  if (amount >= 0 && (!requirePositivePayment || amount > 0)) {
+                    onCollectPayment(amount);
+                  }
                 }}
               >
                 Collect &amp; close
