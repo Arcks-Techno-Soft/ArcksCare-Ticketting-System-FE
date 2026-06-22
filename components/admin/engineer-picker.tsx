@@ -20,7 +20,20 @@ export type Engineer = {
   name: string;
   role: string;
   district?: string | null;
+  /** Active (not-closed) tickets currently assigned to this engineer. */
+  open_ticket_count?: number;
 };
+
+/** Sort least-busy first, then alphabetically. */
+const byAvailability = (a: Engineer, b: Engineer) =>
+  (a.open_ticket_count ?? 0) - (b.open_ticket_count ?? 0) || a.name.localeCompare(b.name);
+
+/** Caption shown under an engineer's name describing their current load. */
+function loadCaption(count: number | undefined): { text: string; free: boolean } {
+  const n = count ?? 0;
+  if (n === 0) return { text: "Recommended · Available", free: true };
+  return { text: `${n} assigned ticket${n === 1 ? "" : "s"} already`, free: false };
+}
 
 type Props = {
   engineers: Engineer[];
@@ -70,9 +83,17 @@ export function EngineerPicker({
   const empty = visible.length === 0;
 
   const wanted = norm(matchDistrict);
-  const matched = wanted ? visible.filter((e) => norm(e.district) === wanted) : [];
-  const others =
-    matched.length > 0 ? visible.filter((e) => norm(e.district) !== wanted) : visible;
+  // District-matched engineers stay grouped on top; within every group the
+  // least-busy engineers (0 tickets = recommended) are listed first.
+  const matched = (wanted ? visible.filter((e) => norm(e.district) === wanted) : [])
+    .slice()
+    .sort(byAvailability);
+  const others = (matched.length > 0
+    ? visible.filter((e) => norm(e.district) !== wanted)
+    : visible
+  )
+    .slice()
+    .sort(byAvailability);
 
   const renderOption = (e: Engineer) => {
     const isSelected = e.id === selectedId;
@@ -101,6 +122,19 @@ export function EngineerPicker({
                 @{e.username}
                 {e.district ? ` · ${e.district}` : ""}
               </span>
+              {(() => {
+                const cap = loadCaption(e.open_ticket_count);
+                return (
+                  <span
+                    className={cn(
+                      "text-[11.5px] font-medium",
+                      cap.free ? "text-emerald-600" : "text-ink-muted"
+                    )}
+                  >
+                    {cap.text}
+                  </span>
+                );
+              })()}
             </span>
           </span>
           {isSelected && (
@@ -159,7 +193,7 @@ export function EngineerPicker({
                 )}
               </>
             ) : (
-              visible.map(renderOption)
+              others.map(renderOption)
             )}
           </motion.ul>
         )}
