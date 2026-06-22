@@ -60,6 +60,11 @@ type AdminTicket = {
   status: string;
   warranty_status: string;
   service_type: string;
+  // Out-of-warranty payment tracking. null = legacy ticket (never gated).
+  payment_status?: "PENDING" | "COLLECTED" | null;
+  payment_amount_inr?: number | null;
+  payment_collected_at?: string | null;
+  payment_collected_by?: Engineer | null;
   description?: string;
   created_at: string;
   attachments: { id: number; filename: string; storage_url: string; size_bytes: number; content_type: string }[];
@@ -570,6 +575,11 @@ export default function TicketDetailPage() {
 
   const handleWarranty = (next: string) =>
     callAction(`warranty-${next}`, "/warranty", "PATCH", { warranty_status: next });
+
+  const handleCollectPayment = (amount: number) =>
+    callAction("collect-payment", "/collect-payment", "POST", {
+      amount_collected_inr: amount,
+    });
 
   const handleServiceType = (next: string) =>
     callAction(`service-type-${next}`, "/service-type", "PATCH", { service_type: next });
@@ -1118,6 +1128,8 @@ export default function TicketDetailPage() {
               onGenerateFieldLink={handleGenerateFieldLink}
               onDownloadPdf={handleDownloadPdf}
               onRegenPdf={handleRegenPdf}
+              defaultPaymentAmount={charges?.grand_total_inr ?? 0}
+              onCollectPayment={handleCollectPayment}
             />
             {!isRemote && (
               <ShipmentsCard
@@ -1434,6 +1446,8 @@ function ActionPanel(props: {
   onGenerateFieldLink: () => void | Promise<void>;
   onDownloadPdf: () => void | Promise<void>;
   onRegenPdf: () => void | Promise<void>;
+  defaultPaymentAmount: number;
+  onCollectPayment: (amount: number) => void | Promise<void>;
 }) {
   const {
     ticket, engineers, currentUserId, currentUserRole, canModerate, isAdmin,
@@ -1443,9 +1457,12 @@ function ActionPanel(props: {
     onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onSeverity,
     onAccept, onStartWork, onResolve, onEngineerSign, onCustomerSign,
     onGenerateFieldLink, onDownloadPdf, onRegenPdf,
+    defaultPaymentAmount, onCollectPayment,
   } = props;
   const signPadRef = useRef<SignaturePadHandle>(null);
   const [signEmpty, setSignEmpty] = useState(true);
+  // null = show defaultPaymentAmount (the billable total) until the user edits.
+  const [paymentDraft, setPaymentDraft] = useState<string | null>(null);
 
   // Customer signature capture (on engineer's device)
   const custPadRef = useRef<SignaturePadHandle>(null);
@@ -1528,9 +1545,18 @@ function ActionPanel(props: {
     ticket.status === "CLOSED" &&
     !!ticket.resolution?.pdf_generated_at;
 
+  // Out-of-warranty payment tracking. payment_status is null on legacy tickets.
+  const paymentPending =
+    ticket.status === "RESOLVED" &&
+    ticket.warranty_status === "OUT_OF_WARRANTY" &&
+    ticket.payment_status === "PENDING";
+  const paymentCollected = ticket.payment_status === "COLLECTED";
+  const canCollectPayment = canModerate || isAssignee;
+
   const hasAnyAction =
     canAcknowledge || canAssign || isAdmin || canAccept || canStart || canResolve ||
     canCaptureCustomer || canEngineerSign || canGenerateFieldLink || canDownloadPdf ||
+    paymentPending ||
     (ticket.status === "RESOLVED" && !!ticket.resolution);
   if (!hasAnyAction) {
     return (
@@ -1770,6 +1796,55 @@ function ActionPanel(props: {
               The assigned engineer captures the customer&apos;s signature on-site.
             </p>
           )}
+        </div>
+      )}
+
+      {/* ------------------- out-of-warranty payment -------------------- */}
+      {paymentPending && (
+        <div className="border-t border-line pt-5">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.1em] text-amber-700">
+              Payment pending
+            </span>
+          </div>
+          <p className="mt-2 text-[12.5px] text-ink-muted">
+            Signed off but payment not collected — record the amount to close the ticket.
+          </p>
+          {canCollectPayment && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-ink-subtle">₹</span>
+              <input
+                type="number"
+                min={0}
+                value={paymentDraft ?? String(defaultPaymentAmount)}
+                onChange={(e) => setPaymentDraft(e.target.value)}
+                className="w-28 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
+                           focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+              />
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                loading={acting === "collect-payment"}
+                onClick={() => {
+                  const raw = paymentDraft ?? String(defaultPaymentAmount);
+                  onCollectPayment(Math.max(0, parseInt(raw || "0", 10)));
+                }}
+              >
+                Collect &amp; close
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Payment collected confirmation */}
+      {paymentCollected && ticket.payment_amount_inr != null && (
+        <div className="border-t border-line pt-5">
+          <p className="text-[12.5px] text-emerald-700">
+            Payment collected · ₹{ticket.payment_amount_inr.toLocaleString("en-IN")}
+            {ticket.payment_collected_by ? ` by ${ticket.payment_collected_by.name}` : ""}
+          </p>
         </div>
       )}
 
