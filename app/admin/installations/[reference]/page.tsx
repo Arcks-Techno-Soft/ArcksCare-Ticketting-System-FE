@@ -362,8 +362,11 @@ export default function InstallationDetailPage() {
   const canCaptureCustomer = isAssignee && inst.status === "COMPLETED" && !customerSigned;
   const canEngineerSign =
     isAssignee && inst.status === "COMPLETED" && customerSigned && !engineerSigned;
+  // Admin/Manager or the assigned engineer can view the installation report.
   const canDownloadPdf =
-    canModerate && inst.status === "CLOSED" && !!inst.resolution?.pdf_generated_at;
+    (canModerate || isAssignee) &&
+    inst.status === "CLOSED" &&
+    !!inst.resolution?.pdf_generated_at;
   // Invoice is editable by the assignee / Admin / Manager until the
   // installation is CLOSED (after which it's frozen into the signed PDF).
   const canEditInvoice = (canModerate || isAssignee) && inst.status !== "CLOSED";
