@@ -73,6 +73,8 @@ export default function NewInstallationPage() {
   const [assignMode, setAssignMode] = useState<AssignMode>("later");
   const [engineers, setEngineers] = useState<Engineer[]>([]);
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
+  const [salesReps, setSalesReps] = useState<{ id: number; name: string; username: string }[]>([]);
+  const [selectedSalesRepId, setSelectedSalesRepId] = useState<number | null>(null);
   const [invoiceDoc, setInvoiceDoc] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +101,19 @@ export default function NewInstallationPage() {
       }
     })();
   }, [user, authFetch]);
+
+  // Sales reps for the "sourced by" picker — only Admin/Manager pick one.
+  useEffect(() => {
+    if (!canAssign) return;
+    (async () => {
+      try {
+        const res = await authFetch(`${API_BASE_URL}/api/v1/admin/sales-reps`);
+        if (res.ok) setSalesReps(await res.json());
+      } catch {
+        // optional — sales rep can be added later
+      }
+    })();
+  }, [canAssign, authFetch]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -168,6 +183,11 @@ export default function NewInstallationPage() {
       payload.assigned_engineer_id = selectedEngineerId;
     } else if (assignMode === "self") {
       payload.assigned_engineer_id = user!.id;
+    }
+
+    // Optional sales rep credited with sourcing this installation.
+    if (canAssign && selectedSalesRepId) {
+      payload.sales_rep_id = selectedSalesRepId;
     }
 
     setSubmitting(true);
@@ -492,6 +512,41 @@ export default function NewInstallationPage() {
                 />
               </div>
             )}
+          </div>
+          )}
+
+          {/* Sales representative — owners/managers credit who sourced the deal */}
+          {canAssign && (
+          <div className="rounded-xl2 border border-line bg-white p-5">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+              Sales representative
+            </p>
+            <p className="mt-1 text-[12.5px] text-ink-muted">
+              Optional — credit the sales rep who sourced this installation.
+            </p>
+            <div className="mt-3">
+              <Label htmlFor="sales_rep">Sales rep</Label>
+              <select
+                id="sales_rep"
+                value={selectedSalesRepId ?? ""}
+                onChange={(e) =>
+                  setSelectedSalesRepId(e.target.value ? Number(e.target.value) : null)
+                }
+                className="mt-1 block w-full rounded-xl2 border border-line bg-white px-4 py-3 text-[14px] text-ink transition-all duration-200 hover:border-line-strong focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+              >
+                <option value="">None</option>
+                {salesReps.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} (@{r.username})
+                  </option>
+                ))}
+              </select>
+              {salesReps.length === 0 && (
+                <p className="mt-1.5 text-[12px] text-ink-subtle">
+                  No sales reps yet — add one under Settings · Users.
+                </p>
+              )}
+            </div>
           </div>
           )}
 

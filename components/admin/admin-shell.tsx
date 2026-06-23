@@ -24,6 +24,7 @@ const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Admin",
   MANAGER: "Manager",
   ENGINEER: "Engineer",
+  SALES: "Sales",
 };
 
 type NavItem = {
@@ -60,7 +61,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "New Installation",
     href: "/admin/installations/new",
     icon: Wrench,
-    roles: ["ADMIN", "MANAGER", "ENGINEER"],
+    roles: ["ADMIN", "MANAGER", "ENGINEER", "SALES"],
     matchPrefix: "/admin/installations/new",
   },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["ADMIN"] },
