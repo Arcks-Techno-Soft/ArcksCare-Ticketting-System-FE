@@ -23,6 +23,7 @@ type InstallationRow = {
   status: string;
   created_by?: { id: number; name: string; role: string } | null;
   assigned_engineer?: { id: number; name: string; role: string } | null;
+  sales_rep?: { id: number; name: string; role: string } | null;
   created_at: string;
 };
 
@@ -218,6 +219,11 @@ export default function InstallationsListPage() {
                       {r.created_by && (
                         <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
                           Created by {r.created_by.name}
+                        </div>
+                      )}
+                      {r.sales_rep && (
+                        <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
+                          Sales: {r.sales_rep.name}
                         </div>
                       )}
                     </Td>

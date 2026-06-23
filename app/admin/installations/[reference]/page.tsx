@@ -54,6 +54,7 @@ type Installation = {
   created_by?: Engineer | null;
   assigned_by?: Engineer | null;
   assigned_engineer?: Engineer | null;
+  sales_rep?: Engineer | null;
   assigned_at?: string | null;
   completed_at?: string | null;
   closed_at?: string | null;
@@ -610,6 +611,10 @@ export default function InstallationDetailPage() {
               <Row
                 label="Engineer"
                 value={inst.assigned_engineer?.name ?? <span className="text-ink-subtle">Not assigned</span>}
+              />
+              <Row
+                label="Sales rep"
+                value={inst.sales_rep?.name ?? <span className="text-ink-subtle">—</span>}
               />
               {inst.assigned_at && (
                 <Row label="Assigned at" value={fmtIst(inst.assigned_at)} />

@@ -22,7 +22,7 @@ type UserRow = {
   last_name?: string | null;
   phone?: string | null;
   email?: string | null;
-  role: "ADMIN" | "MANAGER" | "ENGINEER";
+  role: "ADMIN" | "MANAGER" | "ENGINEER" | "SALES";
   district?: string | null;
   active: boolean;
 };
@@ -31,12 +31,14 @@ const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Admin",
   MANAGER: "Manager",
   ENGINEER: "Engineer",
+  SALES: "Sales",
 };
 
-const ROLE_OPTIONS = ["Admin", "Engineer"] as const;
-const ROLE_VALUES: Record<(typeof ROLE_OPTIONS)[number], "MANAGER" | "ENGINEER"> = {
+const ROLE_OPTIONS = ["Admin", "Engineer", "Sales"] as const;
+const ROLE_VALUES: Record<(typeof ROLE_OPTIONS)[number], "MANAGER" | "ENGINEER" | "SALES"> = {
   Admin: "MANAGER",
   Engineer: "ENGINEER",
+  Sales: "SALES",
 };
 
 export default function UsersPage() {
