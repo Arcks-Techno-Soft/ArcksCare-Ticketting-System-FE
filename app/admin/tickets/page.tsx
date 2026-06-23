@@ -12,6 +12,7 @@ import { Input, Select } from "@/components/ui/Field";
 import { fmtIst, fmtIstTime, fmtIstDate, fmtIstDateDMY } from "@/lib/format-date";
 import { CloseTicketDialog } from "@/components/admin/close-ticket-dialog";
 import { DeleteTicketDialog } from "@/components/admin/delete-ticket-dialog";
+import { LatestNotePopover } from "@/components/admin/latest-note-popover";
 
 type AdminTicket = {
   id: number;
@@ -368,6 +369,12 @@ export default function AdminTicketsPage() {
                           {t.assigned_engineer.name}
                         </div>
                       )}
+                      <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                        <LatestNotePopover
+                          notesUrl={`${API_BASE_URL}/api/v1/admin/tickets/${t.reference}/notes`}
+                          authFetch={authFetch}
+                        />
+                      </div>
                     </Td>
                     <Td><WarrantyBadge status={t.warranty_status} /></Td>
                     <Td>

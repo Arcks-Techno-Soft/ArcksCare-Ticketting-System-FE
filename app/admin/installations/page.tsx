@@ -10,6 +10,7 @@ import { AdminShell } from "@/components/admin/admin-shell";
 import { DashboardViewTabs } from "@/components/admin/dashboard-tabs";
 import { Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { LatestNotePopover } from "@/components/admin/latest-note-popover";
 import { fmtIst, fmtIstDate } from "@/lib/format-date";
 
 type InstallationRow = {
@@ -247,6 +248,12 @@ export default function InstallationsListPage() {
                       >
                         {r.status.charAt(0) + r.status.slice(1).toLowerCase()}
                       </span>
+                      <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                        <LatestNotePopover
+                          notesUrl={`${API_BASE_URL}/api/v1/admin/installations/${r.reference}/notes`}
+                          authFetch={authFetch}
+                        />
+                      </div>
                     </Td>
                     <Td>
                       <span className="text-ink-muted" title={fmtIst(r.created_at)}>
