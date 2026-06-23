@@ -101,6 +101,8 @@ export default function InstallationDetailPage() {
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
+  const [salesReps, setSalesReps] = useState<{ id: number; name: string; username: string }[]>([]);
+  const [selectedSalesRepId, setSelectedSalesRepId] = useState<number | null>(null);
   const [editingInvoice, setEditingInvoice] = useState(false);
   const [invoiceDraft, setInvoiceDraft] = useState("");
 
@@ -111,10 +113,11 @@ export default function InstallationDetailPage() {
   const fetchAll = useCallback(async () => {
     if (!reference) return;
     try {
-      const [i, e, eng] = await Promise.all([
+      const [i, e, eng, reps] = await Promise.all([
         authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}`),
         authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}/events`),
         authFetch(`${API_BASE_URL}/api/v1/admin/engineers`),
+        authFetch(`${API_BASE_URL}/api/v1/admin/sales-reps`),
       ]);
       if (i.status === 404) {
         setInst(null);
@@ -122,9 +125,13 @@ export default function InstallationDetailPage() {
         return;
       }
       if (!i.ok) throw new Error(`Server ${i.status}`);
-      setInst(await i.json());
+      const instData = await i.json();
+      setInst(instData);
       setEvents(e.ok ? await e.json() : []);
       setEngineers(eng.ok ? await eng.json() : []);
+      setSalesReps(reps.ok ? await reps.json() : []);
+      // Reflect the currently-credited rep in the picker.
+      setSelectedSalesRepId(instData.sales_rep?.id ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Load failed");
     } finally {
@@ -186,6 +193,9 @@ export default function InstallationDetailPage() {
   };
 
   const handleSelfAssign = () => callAction("self-assign", "/self-assign");
+
+  const handleSetSalesRep = () =>
+    callAction("sales-rep", "/sales-rep", "PATCH", { sales_rep_id: selectedSalesRepId });
 
   // Attempt actions. These throw on failure so AttemptsBlock surfaces the
   // message inline; on success they refetch the detail.
@@ -686,6 +696,54 @@ export default function InstallationDetailPage() {
                     >
                       {acting === "self-assign" ? "Assigning to you…" : "or, assign to me"}
                     </button>
+                  )}
+                </div>
+              )}
+
+              {/* Sales representative — Admin/Manager credit who sourced the deal */}
+              {canModerate && inst.status !== "CLOSED" && (
+                <div className="mt-5 border-t border-line pt-5">
+                  <Label htmlFor="sales_rep">Sales representative</Label>
+                  {inst.sales_rep && (
+                    <div className="mb-2 mt-1 rounded-md border border-line bg-surface-raised px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-ink-subtle">
+                        Currently credited
+                      </div>
+                      <div className="mt-0.5 text-[13.5px] font-medium text-ink">
+                        {inst.sales_rep.name}
+                      </div>
+                    </div>
+                  )}
+                  <select
+                    id="sales_rep"
+                    value={selectedSalesRepId ?? ""}
+                    onChange={(e) =>
+                      setSelectedSalesRepId(e.target.value ? Number(e.target.value) : null)
+                    }
+                    className="mt-1 block w-full rounded-xl2 border border-line bg-white px-4 py-3 text-[14px] text-ink transition-all duration-200 hover:border-line-strong focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                  >
+                    <option value="">None</option>
+                    {salesReps.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} (@{r.username})
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    loading={acting === "sales-rep"}
+                    disabled={selectedSalesRepId === (inst.sales_rep?.id ?? null)}
+                    onClick={handleSetSalesRep}
+                    className="mt-3 w-full"
+                  >
+                    {inst.sales_rep ? "Update sales rep" : "Set sales rep"}
+                  </Button>
+                  {salesReps.length === 0 && (
+                    <p className="mt-1.5 text-[12px] text-ink-subtle">
+                      No sales reps yet — add one under Settings · Users.
+                    </p>
                   )}
                 </div>
               )}
