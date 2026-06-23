@@ -24,6 +24,7 @@ type UserRow = {
   email?: string | null;
   role: "ADMIN" | "MANAGER" | "ENGINEER" | "SALES";
   district?: string | null;
+  is_sales_rep?: boolean;
   active: boolean;
 };
 
@@ -60,6 +61,7 @@ export default function UsersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<(typeof ROLE_OPTIONS)[number]>("Engineer");
   const [district, setDistrict] = useState("");
+  const [alsoSalesRep, setAlsoSalesRep] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -131,6 +133,8 @@ export default function UsersPage() {
           password,
           role: ROLE_VALUES[role],
           district: role === "Engineer" ? district.trim() : null,
+          // SALES role is implicitly a sales rep; the checkbox lets other roles opt in.
+          is_sales_rep: role === "Sales" ? true : alsoSalesRep,
         }),
       });
       if (!res.ok) {
@@ -158,6 +162,7 @@ export default function UsersPage() {
       setShowPassword(false);
       setRole("Engineer");
       setDistrict("");
+      setAlsoSalesRep(false);
       fetchUsers();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Failed to create user");
@@ -171,6 +176,15 @@ export default function UsersPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !u.active }),
+    });
+    if (res.ok) fetchUsers();
+  };
+
+  const toggleSalesRep = async (u: UserRow) => {
+    const res = await authFetch(`${API_BASE_URL}/api/v1/admin/users/${u.id}/sales-rep`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_sales_rep: !u.is_sales_rep }),
     });
     if (res.ok) fetchUsers();
   };
@@ -313,6 +327,21 @@ export default function UsersPage() {
               </div>
             )}
 
+            {role !== "Sales" && (
+              <label className="md:col-span-2 flex items-center gap-2.5 text-[13.5px] text-ink">
+                <input
+                  type="checkbox"
+                  checked={alsoSalesRep}
+                  onChange={(e) => setAlsoSalesRep(e.target.checked)}
+                  className="h-4 w-4 rounded border-line text-ink focus:ring-ink/20"
+                />
+                Also a sales representative
+                <span className="text-[12px] text-ink-subtle">
+                  — can be credited on installations
+                </span>
+              </label>
+            )}
+
             {formError && (
               <div className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-700">
                 {formError}
@@ -368,9 +397,16 @@ export default function UsersPage() {
                       </Td>
                       <Td><span className="font-mono text-[12.5px]">{u.username}</span></Td>
                       <Td>
-                        <span className="inline-flex items-center rounded-full border border-line bg-white px-2.5 py-0.5 text-[11.5px]">
-                          {ROLE_LABEL[u.role] ?? u.role}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex items-center rounded-full border border-line bg-white px-2.5 py-0.5 text-[11.5px]">
+                            {ROLE_LABEL[u.role] ?? u.role}
+                          </span>
+                          {u.is_sales_rep && u.role !== "SALES" && (
+                            <span className="inline-flex items-center rounded-full border border-line bg-surface-raised px-2.5 py-0.5 text-[11.5px] text-ink-muted">
+                              + Sales
+                            </span>
+                          )}
+                        </div>
                       </Td>
                       <Td>{u.district || "—"}</Td>
                       <Td>{u.phone || "—"}</Td>
@@ -387,15 +423,27 @@ export default function UsersPage() {
                         )}
                       </Td>
                       <Td>
-                        {user.id !== u.id && u.role !== "ADMIN" && (
-                          <button
-                            type="button"
-                            onClick={() => toggleActive(u)}
-                            className="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
-                          >
-                            {u.active ? "Deactivate" : "Activate"}
-                          </button>
-                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {user.id !== u.id && u.role !== "ADMIN" && (
+                            <button
+                              type="button"
+                              onClick={() => toggleActive(u)}
+                              className="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
+                            >
+                              {u.active ? "Deactivate" : "Activate"}
+                            </button>
+                          )}
+                          {/* SALES-role users are always reps; flag is for other roles. */}
+                          {u.role !== "SALES" && (
+                            <button
+                              type="button"
+                              onClick={() => toggleSalesRep(u)}
+                              className="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
+                            >
+                              {u.is_sales_rep ? "Remove sales rep" : "Make sales rep"}
+                            </button>
+                          )}
+                        </div>
                       </Td>
                     </tr>
                   ))
