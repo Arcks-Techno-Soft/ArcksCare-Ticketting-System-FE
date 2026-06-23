@@ -67,6 +67,10 @@ type AdminTicket = {
   payment_amount_inr?: number | null;
   payment_collected_at?: string | null;
   payment_collected_by?: Engineer | null;
+  // Partial-payment money breakdown. Ticket closes only when pending hits ₹0.
+  amount_due_inr?: number;
+  amount_collected_inr?: number;
+  amount_pending_inr?: number;
   description?: string;
   created_at: string;
   attachments: { id: number; filename: string; storage_url: string; size_bytes: number; content_type: string }[];
@@ -1555,7 +1559,14 @@ function ActionPanel(props: {
     ticket.payment_status === "PENDING";
   const paymentCollected = ticket.payment_status === "COLLECTED";
   const canCollectPayment = canModerate || isAssignee;
-  const requirePositivePayment = ticket.warranty_status === "OUT_OF_WARRANTY";
+  // Remote-support tickets have no signatures, so payment can be collected as
+  // soon as they're RESOLVED (isRemote is declared above). Site visits collect
+  // after both signatures.
+  // Money breakdown for partial payments. Falls back to the charges total when
+  // the backend hasn't sent the new fields yet (pre-deploy).
+  const amountDue = ticket.amount_due_inr ?? defaultPaymentAmount;
+  const amountCollected = ticket.amount_collected_inr ?? 0;
+  const amountPending = ticket.amount_pending_inr ?? Math.max(0, amountDue - amountCollected);
 
   const hasAnyAction =
     canAcknowledge || canAssign || isAdmin || canAccept || canStart || canResolve ||
@@ -1803,55 +1814,78 @@ function ActionPanel(props: {
         </div>
       )}
 
-      {/* ------------------- out-of-warranty payment -------------------- */}
-      {paymentPending && (
-        <div className="border-t border-line pt-5">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.1em] text-amber-700">
-              Payment pending
-            </span>
-          </div>
-          <p className="mt-2 text-[12.5px] text-ink-muted">
-            {customerSigned && engineerSigned
-              ? "Signed off — payment not collected. Record the amount to close the ticket."
-              : "Payment due — collect after sign-off."}
-          </p>
-          {customerSigned && engineerSigned && canCollectPayment && (
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-ink-subtle">₹</span>
-              <input
-                type="number"
-                min={requirePositivePayment ? 1 : 0}
-                value={paymentDraft ?? String(defaultPaymentAmount)}
-                onChange={(e) => setPaymentDraft(e.target.value)}
-                className="w-28 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
-                           focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
-              />
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                loading={acting === "collect-payment"}
-                disabled={(() => {
-                  const a = parseInt((paymentDraft ?? String(defaultPaymentAmount)) || "0", 10);
-                  return requirePositivePayment ? a <= 0 : a < 0;
-                })()}
-                onClick={() => {
-                  const amount = parseInt(
-                    (paymentDraft ?? String(defaultPaymentAmount)) || "0",
-                    10
-                  );
-                  if (amount >= 0 && (!requirePositivePayment || amount > 0)) {
-                    onCollectPayment(amount);
-                  }
-                }}
-              >
-                Collect &amp; close
-              </Button>
+      {/* ------------------- payment (partial-aware) -------------------- */}
+      {paymentPending && (() => {
+        // Collect is available for remote tickets once RESOLVED, and for site
+        // visits once both signatures are in. The amount entered must be
+        // 1..pending; the ticket closes only when the balance reaches ₹0.
+        const canCollectNow = isRemote || (customerSigned && engineerSigned);
+        const draftNum = parseInt((paymentDraft ?? String(amountPending)) || "0", 10);
+        const validDraft = draftNum > 0 && draftNum <= amountPending;
+        const clearsBalance = draftNum === amountPending;
+        return (
+          <div className="border-t border-line pt-5">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.1em] text-amber-700">
+                Payment pending
+              </span>
             </div>
-          )}
-        </div>
-      )}
+            <div className="mt-2 text-[12.5px] text-ink-muted">
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                <span>Total due: <span className="font-medium text-ink">₹{amountDue.toLocaleString("en-IN")}</span></span>
+                {amountCollected > 0 && (
+                  <span>Collected: <span className="font-medium text-ink">₹{amountCollected.toLocaleString("en-IN")}</span></span>
+                )}
+                <span>Pending: <span className="font-medium text-amber-700">₹{amountPending.toLocaleString("en-IN")}</span></span>
+              </div>
+              {!canCollectNow && (
+                <p className="mt-1">Collect the balance after sign-off to close the ticket.</p>
+              )}
+            </div>
+            {canCollectNow && canCollectPayment && (
+              <>
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-ink-subtle">₹</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={amountPending}
+                    value={paymentDraft ?? String(amountPending)}
+                    onChange={(e) => setPaymentDraft(e.target.value)}
+                    className="w-28 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
+                               focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                  />
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    loading={acting === "collect-payment"}
+                    disabled={!validDraft}
+                    onClick={() => {
+                      if (validDraft) {
+                        void onCollectPayment(draftNum);
+                        setPaymentDraft(null);
+                      }
+                    }}
+                  >
+                    {clearsBalance ? "Collect & close" : "Collect part-payment"}
+                  </Button>
+                </div>
+                {!validDraft && (
+                  <p className="mt-1.5 text-[12px] text-red-600">
+                    Enter an amount between ₹1 and ₹{amountPending.toLocaleString("en-IN")}.
+                  </p>
+                )}
+                {validDraft && !clearsBalance && (
+                  <p className="mt-1.5 text-[12px] text-ink-subtle">
+                    ₹{(amountPending - draftNum).toLocaleString("en-IN")} will remain pending — the ticket stays open until paid in full.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Payment collected confirmation */}
       {paymentCollected && ticket.payment_amount_inr != null && (
