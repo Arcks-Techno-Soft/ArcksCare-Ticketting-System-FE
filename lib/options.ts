@@ -12,6 +12,17 @@ export const BUSINESS_TYPES = [
   "Other",
 ] as const;
 
+// Roles for the contact person. Kept in sync with the backend
+// ContactPersonProfile enum. "Other" reveals a free-text field.
+export const CONTACT_PERSON_PROFILES = [
+  "Owner",
+  "Manager",
+  "Cashier",
+  "Chef",
+  "Captain/Waiter",
+  "Other",
+] as const;
+
 export const PRODUCT_CATEGORIES = [
   "POS Machine",
   "Printer",

@@ -18,6 +18,8 @@ type AdminTicket = {
   id: number;
   reference: string;
   business_name: string;
+  contact_name: string;
+  contact_person_profile?: string | null;
   city: string;
   state: string;
   product_category: string;
@@ -345,9 +347,14 @@ export default function AdminTicketsPage() {
                       <div className="text-[12px] text-ink-subtle">
                         {t.city}, {t.state}
                       </div>
-                      {t.raised_by && (
+                      {t.raised_by ? (
                         <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
                           Created by {t.raised_by.name}
+                        </div>
+                      ) : (
+                        <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
+                          Raised by customer — {t.contact_name}
+                          {t.contact_person_profile ? ` — ${t.contact_person_profile}` : ""}
                         </div>
                       )}
                     </Td>

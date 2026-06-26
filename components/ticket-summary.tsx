@@ -69,6 +69,14 @@ export function TicketSummary({ values, attachments = [] }: Props) {
               }
             />
             <Row label="Contact" value={values.contact_name} />
+            <Row
+              label="Role"
+              value={
+                values.contact_person_profile === "Other"
+                  ? values.contact_person_profile_other || values.contact_person_profile
+                  : values.contact_person_profile
+              }
+            />
             <Row label="Phone" value={values.phone} />
             <Row label="Email" value={values.email} />
           </Block>

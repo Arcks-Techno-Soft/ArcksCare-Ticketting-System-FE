@@ -11,6 +11,7 @@ import { ticketSchema, type TicketFormValues } from "@/lib/schema";
 import { submitTicket, type DuplicateError, type SubmitResult, type TicketCreated } from "@/lib/api";
 import {
   BUSINESS_TYPES,
+  CONTACT_PERSON_PROFILES,
   INDIAN_STATES,
   ISSUE_CATEGORIES,
   PREFERRED_CONTACT_TIMES,
@@ -163,6 +164,28 @@ export function TicketForm({ submit = submitTicket, onCreated, submitLabel }: Ti
               {...register("contact_name")}
             />
             <FieldError message={errors.contact_name?.message} />
+          </FieldGroup>
+
+          <FieldGroup>
+            <Label htmlFor="contact_person_profile" required>Contact person profile</Label>
+            <Select
+              id="contact_person_profile"
+              options={CONTACT_PERSON_PROFILES}
+              placeholder="Select role"
+              {...register("contact_person_profile")}
+            />
+            <FieldError message={errors.contact_person_profile?.message} />
+            {watched.contact_person_profile === "Other" && (
+              <div className="mt-2">
+                <Input
+                  id="contact_person_profile_other"
+                  placeholder="Please specify the role"
+                  aria-label="Specify the contact person's role"
+                  {...register("contact_person_profile_other")}
+                />
+                <FieldError message={errors.contact_person_profile_other?.message} />
+              </div>
+            )}
           </FieldGroup>
 
           <FieldGroup>
