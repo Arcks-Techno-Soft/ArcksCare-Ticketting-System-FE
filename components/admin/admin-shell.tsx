@@ -13,6 +13,7 @@ import {
   LogOut,
   Wrench,
   PlusCircle,
+  ShieldCheck,
   Menu,
   X,
 } from "lucide-react";
@@ -63,6 +64,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: Wrench,
     roles: ["ADMIN", "MANAGER", "ENGINEER", "SALES"],
     matchPrefix: "/admin/installations/new",
+  },
+  {
+    label: "Warranty Management",
+    href: "/admin/warranties",
+    icon: ShieldCheck,
+    roles: ["ADMIN", "MANAGER"],
+    matchPrefix: "/admin/warranties",
   },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["ADMIN"] },
   { label: "Reports", href: "/admin/reports", icon: FileBarChart, roles: ["ADMIN"], matchPrefix: "/admin/reports" },
