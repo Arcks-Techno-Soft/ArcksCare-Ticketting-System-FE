@@ -8,6 +8,8 @@ export const BUSINESS_TYPES = [
   "Cloud Kitchen",
   "Food Court",
   "Ice Cream Parlour",
+  "Pub and Bar",
+  "Brewery",
   "Partner",
   "Other",
 ] as const;
