@@ -452,7 +452,8 @@ export default function AdminTicketsPage() {
                         >
                           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
                           <span className="truncate">
-                            Customer{t.contact_person_profile ? ` · ${t.contact_person_profile}` : ""}
+                            Created by customer · {t.contact_name}
+                            {t.contact_person_profile ? ` · ${t.contact_person_profile}` : ""}
                           </span>
                         </div>
                       )}
