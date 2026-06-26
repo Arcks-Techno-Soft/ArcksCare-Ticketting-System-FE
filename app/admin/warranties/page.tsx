@@ -21,7 +21,8 @@ type WarrantyOut = {
   id: number;
   product_name: string;
   serial_number: string;
-  sale_date: string; // ISO yyyy-mm-dd
+  invoice_number: string | null;
+  sale_date: string; // ISO yyyy-mm-dd (the invoice date)
   warranty_months: number;
   expiry_date: string; // ISO yyyy-mm-dd
   is_active: boolean;
@@ -89,7 +90,8 @@ export default function WarrantyManagementPage() {
   // Form fields
   const [productName, setProductName] = useState("");
   const [serial, setSerial] = useState("");
-  const [saleDate, setSaleDate] = useState(""); // DD-MM-YYYY
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [saleDate, setSaleDate] = useState(""); // Invoice date, DD-MM-YYYY
   const [durationChoice, setDurationChoice] = useState(`${WARRANTY_DURATIONS_MONTHS[1]} months`); // default 12
   const [customMonths, setCustomMonths] = useState("");
   const [notes, setNotes] = useState("");
@@ -197,6 +199,7 @@ export default function WarrantyManagementPage() {
   const resetForm = () => {
     setProductName("");
     setSerial("");
+    setInvoiceNumber("");
     setSaleDate("");
     setDurationChoice(`${WARRANTY_DURATIONS_MONTHS[1]} months`);
     setCustomMonths("");
@@ -212,14 +215,16 @@ export default function WarrantyManagementPage() {
 
     if (productName.trim().length < 1) return setError("Select or type a product name.");
     if (serial.trim().length < 1) return setError("Enter the product serial number.");
+    if (invoiceNumber.trim().length < 1) return setError("Enter the invoice number.");
     const d = parseDMY(saleDate);
-    if (!d) return setError("Enter the sale date as DD-MM-YYYY.");
-    if (d.getTime() > Date.now()) return setError("Sale date cannot be in the future.");
+    if (!d) return setError("Enter the invoice date as DD-MM-YYYY.");
+    if (d.getTime() > Date.now()) return setError("Invoice date cannot be in the future.");
     if (months == null) return setError("Choose a warranty duration (or type a custom number of months).");
 
     const payload = {
       product_name: productName.trim(),
       serial_number: serial.trim(),
+      invoice_number: invoiceNumber.trim(),
       sale_date: toISODate(d),
       warranty_months: months,
       notes: notes.trim() || null,
@@ -336,7 +341,20 @@ export default function WarrantyManagementPage() {
             </div>
 
             <div>
-              <Label htmlFor="sale_date" required>Sale date</Label>
+              <Label htmlFor="invoice_number" required>Invoice number</Label>
+              <Input
+                id="invoice_number"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="e.g. INV-2025-00123"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div>
+              <Label htmlFor="sale_date" required>Invoice Date</Label>
               <Input
                 id="sale_date"
                 value={saleDate}
@@ -387,7 +405,7 @@ export default function WarrantyManagementPage() {
                     </span>
                   </span>
                 ) : (
-                  <span className="text-ink-subtle">Fill sale date + duration</span>
+                  <span className="text-ink-subtle">Fill invoice date + duration</span>
                 )}
               </div>
             </div>
@@ -400,7 +418,7 @@ export default function WarrantyManagementPage() {
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Invoice no., customer, or any remark…"
+              placeholder="Customer, remarks, or any other detail…"
             />
           </div>
 
@@ -428,7 +446,7 @@ export default function WarrantyManagementPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search serial or product…"
+              placeholder="Search serial, product, or invoice…"
               className="w-64 rounded-xl2 border border-line bg-white px-3.5 py-2 text-[13.5px] text-ink placeholder:text-ink-subtle focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
             />
           </div>
@@ -439,7 +457,8 @@ export default function WarrantyManagementPage() {
                 <tr className="border-b border-line bg-surface-raised text-[11px] uppercase tracking-[0.1em] text-ink-subtle">
                   <th className="px-4 py-3 font-medium">Product</th>
                   <th className="px-4 py-3 font-medium">Serial</th>
-                  <th className="px-4 py-3 font-medium">Sale date</th>
+                  <th className="px-4 py-3 font-medium">Invoice no.</th>
+                  <th className="px-4 py-3 font-medium">Invoice date</th>
                   <th className="px-4 py-3 font-medium">Duration</th>
                   <th className="px-4 py-3 font-medium">Expiry</th>
                   <th className="px-4 py-3 font-medium">Status</th>
@@ -449,7 +468,7 @@ export default function WarrantyManagementPage() {
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-ink-subtle">
+                    <td colSpan={8} className="px-4 py-8 text-center text-ink-subtle">
                       {loadingList ? "Loading…" : "No warranties registered yet."}
                     </td>
                   </tr>
@@ -458,6 +477,7 @@ export default function WarrantyManagementPage() {
                   <tr key={r.id} className="border-b border-line last:border-0">
                     <td className="px-4 py-3 text-ink">{r.product_name}</td>
                     <td className="px-4 py-3 font-mono text-[12.5px] text-ink">{r.serial_number}</td>
+                    <td className="px-4 py-3 text-ink-muted">{r.invoice_number ?? "—"}</td>
                     <td className="px-4 py-3 text-ink-muted">{fmtIstDate(r.sale_date)}</td>
                     <td className="px-4 py-3 text-ink-muted">{r.warranty_months} mo</td>
                     <td className="px-4 py-3 text-ink-muted">{fmtIstDate(r.expiry_date)}</td>

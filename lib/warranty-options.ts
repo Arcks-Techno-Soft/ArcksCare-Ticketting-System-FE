@@ -458,4 +458,4 @@ export const WARRANTY_PRODUCTS: readonly string[] = [
 
 // Standard warranty durations (months) offered in the dropdown. The form
 // also accepts a custom value, so this is a suggestion list too.
-export const WARRANTY_DURATIONS_MONTHS: readonly number[] = [6, 12, 18, 24, 36, 48];
+export const WARRANTY_DURATIONS_MONTHS: readonly number[] = [6, 12, 18, 24, 36];
