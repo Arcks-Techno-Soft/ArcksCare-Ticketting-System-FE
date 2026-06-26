@@ -207,7 +207,7 @@ export default function TicketDetailPage() {
       const [t, e, eng, s, c, sh] = await Promise.all([
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/events`),
-        authFetch(`${API_BASE_URL}/api/v1/admin/engineers`),
+        authFetch(`${API_BASE_URL}/api/v1/admin/engineers?include_sales_reps=true`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/sub-engineer-suggestions`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/charges`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/shipments`),
@@ -1647,18 +1647,18 @@ function ActionPanel(props: {
             </div>
           )}
           <label className="mb-1.5 block text-[12.5px] font-medium text-ink">
-            {ticket.assigned_engineer ? "Reassign to another engineer" : "Assign to"}
+            {ticket.assigned_engineer ? "Reassign to someone else" : "Assign to"}
           </label>
           <EngineerPicker
             engineers={engineers}
             selectedId={selectedEngineerId}
             onChange={setSelectedEngineerId}
-            // When reassigning, hide the engineer currently on the ticket — reassigning
+            // When reassigning, hide the person currently on the ticket — reassigning
             // to the same person isn't a meaningful action.
             excludeId={ticket.assigned_engineer?.id ?? null}
             // Surface engineers covering this ticket's city/district first.
             matchDistrict={ticket.city}
-            placeholder="Choose engineer"
+            placeholder="Choose assignee"
           />
           {warrantyUnknown && (
             <p className="mt-3 rounded-xl2 border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">

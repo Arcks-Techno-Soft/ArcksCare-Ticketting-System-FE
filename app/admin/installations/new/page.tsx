@@ -94,7 +94,7 @@ export default function NewInstallationPage() {
     if (!user) return;
     (async () => {
       try {
-        const res = await authFetch(`${API_BASE_URL}/api/v1/admin/engineers`);
+        const res = await authFetch(`${API_BASE_URL}/api/v1/admin/engineers?include_sales_reps=true`);
         if (res.ok) setEngineers(await res.json());
       } catch {
         // optional — assignment can still happen later
@@ -481,7 +481,7 @@ export default function NewInstallationPage() {
                 [
                   { id: "later", label: "Assign later" },
                   { id: "self", label: "Assign to me" },
-                  { id: "engineer", label: "Pick an engineer" },
+                  { id: "engineer", label: "Pick assignee" },
                 ] as { id: AssignMode; label: string }[]
               ).map((opt) => {
                 const active = assignMode === opt.id;
@@ -503,12 +503,12 @@ export default function NewInstallationPage() {
             </div>
             {assignMode === "engineer" && (
               <div className="mt-4">
-                <Label>Engineer</Label>
+                <Label>Assignee</Label>
                 <EngineerPicker
                   engineers={engineers}
                   selectedId={selectedEngineerId}
                   onChange={setSelectedEngineerId}
-                  placeholder="Choose engineer"
+                  placeholder="Choose assignee"
                 />
               </div>
             )}

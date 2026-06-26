@@ -116,7 +116,7 @@ export default function InstallationDetailPage() {
       const [i, e, eng, reps] = await Promise.all([
         authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}`),
         authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}/events`),
-        authFetch(`${API_BASE_URL}/api/v1/admin/engineers`),
+        authFetch(`${API_BASE_URL}/api/v1/admin/engineers?include_sales_reps=true`),
         authFetch(`${API_BASE_URL}/api/v1/admin/sales-reps`),
       ]);
       if (i.status === 404) {
@@ -675,7 +675,7 @@ export default function InstallationDetailPage() {
                     selectedId={selectedEngineerId}
                     onChange={setSelectedEngineerId}
                     excludeId={inst.assigned_engineer?.id ?? null}
-                    placeholder="Choose engineer"
+                    placeholder="Choose assignee"
                   />
                   <Button
                     type="button"

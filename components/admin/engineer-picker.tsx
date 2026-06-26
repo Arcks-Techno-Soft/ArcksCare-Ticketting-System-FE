@@ -55,7 +55,7 @@ export function EngineerPicker({
   onChange,
   excludeId,
   matchDistrict,
-  placeholder = "Choose engineer",
+  placeholder = "Choose assignee",
   disabled,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -117,7 +117,14 @@ export function EngineerPicker({
               {e.name.slice(0, 1).toUpperCase()}
             </span>
             <span className="flex flex-col">
-              <span className="font-medium text-ink">{e.name}</span>
+              <span className="flex items-center gap-1.5 font-medium text-ink">
+                {e.name}
+                {e.role === "SALES" && (
+                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+                    Sales rep
+                  </span>
+                )}
+              </span>
               <span className="text-[11.5px] text-ink-subtle">
                 @{e.username}
                 {e.district ? ` · ${e.district}` : ""}
@@ -161,7 +168,7 @@ export function EngineerPicker({
         )}
       >
         <span className={selected ? "text-ink" : "text-ink-subtle"}>
-          {empty ? "No other engineers available" : selected ? selected.name : placeholder}
+          {empty ? "No other assignees available" : selected ? selected.name : placeholder}
         </span>
         <svg
           width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden
