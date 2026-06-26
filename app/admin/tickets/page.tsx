@@ -8,7 +8,7 @@ import { useAuth, API_BASE_URL } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { DashboardViewTabs } from "@/components/admin/dashboard-tabs";
 import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
-import { Input, Select } from "@/components/ui/Field";
+import { Input } from "@/components/ui/Field";
 import { fmtIst, fmtIstTime, fmtIstDate, fmtIstDateDMY } from "@/lib/format-date";
 import { CloseTicketDialog } from "@/components/admin/close-ticket-dialog";
 import { DeleteTicketDialog } from "@/components/admin/delete-ticket-dialog";
@@ -34,14 +34,26 @@ type AdminTicket = {
 };
 
 const STATUSES = ["OPEN", "ACKNOWLEDGED", "ASSIGNED", "ACCEPTED", "RESOLVING", "RESOLVED", "CLOSED"] as const;
-const SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
-const DATE_RANGES: { label: string; days: number | null }[] = [
-  { label: "Any time", days: null },
-  { label: "Today", days: 1 },
-  { label: "Last 7 days", days: 7 },
-  { label: "Last 30 days", days: 30 },
-  { label: "Last 90 days", days: 90 },
-  { label: "Last 365 days", days: 365 },
+
+// Inbox "Sort by" control. Most options map straight to the backend `sort`
+// param; "business" / "engineer" instead narrow the list to one value (picked
+// in the second dropdown) and order those rows by workflow status.
+type SortKey =
+  | "newest"
+  | "oldest"
+  | "severity"
+  | "status"
+  | "unassigned"
+  | "business"
+  | "engineer";
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "severity", label: "Severity (high → low)" },
+  { value: "status", label: "Status (workflow)" },
+  { value: "unassigned", label: "Unassigned first" },
+  { value: "business", label: "By business" },
+  { value: "engineer", label: "By engineer" },
 ];
 const REFRESH_INTERVAL_MS = 30_000;
 const PAGE_SIZES = [25, 50, 100] as const;
@@ -80,10 +92,35 @@ export default function AdminTicketsPage() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState("");
-  const [severityFilter, setSeverityFilter] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [createdWithinDays, setCreatedWithinDays] = useState<number | null>(null);
+
+  // Sort / group control. `sortBy` is the dimension; `businessValue` /
+  // engineerValue hold the second-dropdown pick for the "by business" /
+  // "by engineer" views.
+  const [sortBy, setSortBy] = useState<SortKey>("newest");
+  const [businessValue, setBusinessValue] = useState("");
+  const [engineerValue, setEngineerValue] = useState(""); // engineer id as string
+  // Picker options for the second dropdown, loaded once.
+  const [businesses, setBusinesses] = useState<string[]>([]);
+  const [engineers, setEngineers] = useState<{ id: number; name: string }[]>([]);
+
+  // Translate the sort control into backend query params. "by business" /
+  // "by engineer" sort by status and narrow to the picked value (once chosen).
+  const applySortParams = useCallback(
+    (qs: URLSearchParams) => {
+      if (sortBy === "business") {
+        qs.set("sort", "status");
+        if (businessValue) qs.set("business_name", businessValue);
+      } else if (sortBy === "engineer") {
+        qs.set("sort", "status");
+        if (engineerValue) qs.set("assigned_engineer_id", engineerValue);
+      } else {
+        qs.set("sort", sortBy);
+      }
+    },
+    [sortBy, businessValue, engineerValue]
+  );
 
   // Pagination
   const [pageSize, setPageSize] = useState<PageSize>(50);
@@ -99,7 +136,7 @@ export default function AdminTicketsPage() {
   // sitting on a page that no longer exists.
   useEffect(() => {
     setPage(0);
-  }, [statusFilter, severityFilter, debouncedSearch, createdWithinDays, pageSize]);
+  }, [statusFilter, debouncedSearch, sortBy, businessValue, engineerValue, pageSize]);
 
   // Gate: redirect to login if not authed
   useEffect(() => {
@@ -109,9 +146,8 @@ export default function AdminTicketsPage() {
   const fetchTickets = useCallback(async () => {
     const qs = new URLSearchParams();
     if (statusFilter) qs.set("status", statusFilter);
-    if (severityFilter) qs.set("severity", severityFilter);
     if (debouncedSearch.trim()) qs.set("search", debouncedSearch.trim());
-    if (createdWithinDays) qs.set("created_within_days", String(createdWithinDays));
+    applySortParams(qs);
     qs.set("limit", String(pageSize));
     qs.set("offset", String(page * pageSize));
 
@@ -135,16 +171,17 @@ export default function AdminTicketsPage() {
     } finally {
       setInitialLoading(false);
     }
-  }, [authFetch, router, statusFilter, severityFilter, debouncedSearch, createdWithinDays, page, pageSize]);
+  }, [authFetch, router, statusFilter, debouncedSearch, applySortParams, page, pageSize]);
 
   // Aggregate counts for the status pills. Note: the status filter is
   // intentionally NOT sent — every pill must show its count regardless of which
   // status is currently selected.
   const fetchCounts = useCallback(async () => {
     const qs = new URLSearchParams();
-    if (severityFilter) qs.set("severity", severityFilter);
     if (debouncedSearch.trim()) qs.set("search", debouncedSearch.trim());
-    if (createdWithinDays) qs.set("created_within_days", String(createdWithinDays));
+    // The pills mirror the narrowed list when sorting by business / engineer.
+    if (sortBy === "business" && businessValue) qs.set("business_name", businessValue);
+    if (sortBy === "engineer" && engineerValue) qs.set("assigned_engineer_id", engineerValue);
 
     try {
       const res = await authFetch(`${API_BASE_URL}/api/v1/admin/tickets/counts?${qs.toString()}`);
@@ -161,7 +198,7 @@ export default function AdminTicketsPage() {
       // Non-fatal: fall back to client-side counts. The list fetch surfaces errors.
       setCountsAvailable(false);
     }
-  }, [authFetch, severityFilter, debouncedSearch, createdWithinDays]);
+  }, [authFetch, debouncedSearch, sortBy, businessValue, engineerValue]);
 
   // Refetch on filter or page change. Skeleton only shows during the FIRST
   // load — subsequent fetches leave the current rows in place while loading.
@@ -176,6 +213,32 @@ export default function AdminTicketsPage() {
     if (!user) return;
     fetchCounts();
   }, [user, fetchCounts]);
+
+  // Load the "by business" / "by engineer" picker options once. Best-effort —
+  // a failure just leaves those sort views without a value list.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [bRes, eRes] = await Promise.all([
+          authFetch(`${API_BASE_URL}/api/v1/admin/businesses`),
+          authFetch(`${API_BASE_URL}/api/v1/admin/engineers`),
+        ]);
+        if (cancelled) return;
+        if (bRes.ok) setBusinesses((await bRes.json()) as string[]);
+        if (eRes.ok) {
+          const list = (await eRes.json()) as { id: number; name: string }[];
+          setEngineers(list.map((e) => ({ id: e.id, name: e.name })));
+        }
+      } catch {
+        /* non-fatal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, authFetch]);
 
   // Auto-refresh interval (only when authed and tab is visible-ish)
   useEffect(() => {
@@ -253,52 +316,79 @@ export default function AdminTicketsPage() {
           </div>
         </div>
 
-        {/* Filters row */}
-        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-[1fr_200px_200px_auto]">
-          <Input
-            placeholder="Search by reference, business name, or serial number…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Select
-            options={SEVERITIES}
-            placeholder="All severities"
-            value={severityFilter}
-            onChange={(e) => setSeverityFilter(e.target.value)}
-          />
-          <div className="relative">
-            <select
-              value={createdWithinDays ?? ""}
+        {/* Filters + sort row */}
+        <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="md:flex-1">
+            <Input
+              placeholder="Search by reference, business name, or serial number…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {/* Sort by (dimension) */}
+            <ChevronSelect
+              aria-label="Sort tickets by"
+              value={sortBy}
               onChange={(e) => {
-                const v = e.target.value;
-                setCreatedWithinDays(v === "" ? null : Number(v));
+                const next = e.target.value as SortKey;
+                setSortBy(next);
+                // Reset the second-dropdown pick when leaving its view.
+                if (next !== "business") setBusinessValue("");
+                if (next !== "engineer") setEngineerValue("");
               }}
-              className="w-full appearance-none rounded-xl2 border border-line bg-white px-4 py-3.5 pr-10 text-[13.5px] text-ink hover:border-ink-soft focus:border-ink focus:outline-none transition-colors"
-              aria-label="Opened within"
+              className="sm:w-[190px]"
             >
-              {DATE_RANGES.map((r) => (
-                <option key={r.label} value={r.days ?? ""}>
-                  {r.label}
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  Sort: {o.label}
                 </option>
               ))}
-            </select>
-            <svg
-              className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-subtle"
-              width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden
+            </ChevronSelect>
+
+            {/* Second dropdown (value) — only for the business / engineer views */}
+            {sortBy === "business" && (
+              <ChevronSelect
+                aria-label="Filter by business"
+                value={businessValue}
+                onChange={(e) => setBusinessValue(e.target.value)}
+                className="sm:w-[200px]"
+              >
+                <option value="">All businesses</option>
+                {businesses.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </ChevronSelect>
+            )}
+            {sortBy === "engineer" && (
+              <ChevronSelect
+                aria-label="Filter by engineer"
+                value={engineerValue}
+                onChange={(e) => setEngineerValue(e.target.value)}
+                className="sm:w-[200px]"
+              >
+                <option value="">All engineers</option>
+                {engineers.map((eng) => (
+                  <option key={eng.id} value={String(eng.id)}>
+                    {eng.name}
+                  </option>
+                ))}
+              </ChevronSelect>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                fetchTickets();
+                fetchCounts();
+              }}
+              className="rounded-xl2 border border-line bg-white px-5 py-3.5 text-[13.5px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
             >
-              <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+              Refresh now
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              fetchTickets();
-              fetchCounts();
-            }}
-            className="rounded-xl2 border border-line bg-white px-5 py-3.5 text-[13.5px] text-ink hover:border-ink hover:bg-surface-raised transition-colors"
-          >
-            Refresh now
-          </button>
         </div>
 
         {/* Table */}
@@ -531,6 +621,31 @@ function Pagination({
 }
 
 /* -------------------------- Layout helpers ---------------------------- */
+
+// A styled native <select> with a chevron — used for the sort + value pickers
+// where option value ≠ label (so the string-only ui/Field Select can't be used).
+function ChevronSelect({
+  children,
+  className,
+  ...rest
+}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="relative">
+      <select
+        className={`w-full appearance-none rounded-xl2 border border-line bg-white px-4 py-3.5 pr-10 text-[13.5px] text-ink hover:border-ink-soft focus:border-ink focus:outline-none transition-colors ${className ?? ""}`}
+        {...rest}
+      >
+        {children}
+      </select>
+      <svg
+        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-subtle"
+        width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden
+      >
+        <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
 
 function Th({ children }: { children: React.ReactNode }) {
   return <th className="px-5 py-3.5 font-medium">{children}</th>;
