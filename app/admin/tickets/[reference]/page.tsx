@@ -42,6 +42,7 @@ type AdminTicket = {
   reference: string;
   business_name: string;
   contact_name: string;
+  contact_person_profile?: string | null;
   phone: string;
   email: string | null;
   business_type: string;
@@ -967,10 +968,17 @@ export default function TicketDetailPage() {
           <div className="space-y-10">
             <DetailBlock title="Customer">
               <Row label="Business" value={`${ticket.business_name} · ${ticket.business_type}`} />
-              <Row label="Contact" value={ticket.contact_name} />
+              <Row
+                label="Contact"
+                value={
+                  ticket.contact_person_profile
+                    ? `${ticket.contact_name} · ${ticket.contact_person_profile}`
+                    : ticket.contact_name
+                }
+              />
               <Row label="Phone" value={<a className="hover:underline" href={`tel:${ticket.phone}`}>{ticket.phone}</a>} />
               <Row label="Email" value={ticket.email ? <a className="hover:underline" href={`mailto:${ticket.email}`}>{ticket.email}</a> : "—"} />
-              {ticket.raised_by && (
+              {ticket.raised_by ? (
                 <Row
                   label="Raised by"
                   value={
@@ -979,6 +987,16 @@ export default function TicketDetailPage() {
                       <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-blue-700">
                         {ticket.raised_by.role === "ENGINEER" ? "Engineer" : ticket.raised_by.role}
                       </span>
+                    </span>
+                  }
+                />
+              ) : (
+                <Row
+                  label="Raised by"
+                  value={
+                    <span>
+                      Customer — {ticket.contact_name}
+                      {ticket.contact_person_profile ? ` — ${ticket.contact_person_profile}` : ""}
                     </span>
                   }
                 />

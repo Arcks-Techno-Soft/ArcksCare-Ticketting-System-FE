@@ -48,12 +48,28 @@ export async function submitTicket(
     // When the customer chose "Other", the typed category (business_type_other)
     // IS the business type we store. Strip the helper field and fold its value
     // into business_type before sending.
-    const { email, business_type_other, business_type, ...rest } = values;
+    const {
+      email,
+      business_type_other,
+      business_type,
+      contact_person_profile_other,
+      contact_person_profile,
+      ...rest
+    } = values;
     const resolvedType =
       business_type === "Other" && business_type_other?.trim()
         ? business_type_other.trim()
         : business_type;
-    const base = { ...rest, business_type: resolvedType };
+    // Same fold for the contact role: an "Other" pick sends the typed role.
+    const resolvedProfile =
+      contact_person_profile === "Other" && contact_person_profile_other?.trim()
+        ? contact_person_profile_other.trim()
+        : contact_person_profile;
+    const base = {
+      ...rest,
+      business_type: resolvedType,
+      contact_person_profile: resolvedProfile,
+    };
     // Drop email entirely when blank so the backend stores it as null
     // (an empty string would fail email-format validation).
     const payload = email && email.trim() ? { ...base, email } : base;

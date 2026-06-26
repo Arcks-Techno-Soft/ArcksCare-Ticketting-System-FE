@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   BUSINESS_TYPES,
+  CONTACT_PERSON_PROFILES,
   ISSUE_CATEGORIES,
   PRODUCT_CATEGORIES,
 } from "./options";
@@ -9,6 +10,13 @@ import {
 export const ticketSchema = z.object({
   business_name: z.string().trim().min(2, "Business name is required"),
   contact_name: z.string().trim().min(2, "Contact name is required"),
+  contact_person_profile: z.enum(CONTACT_PERSON_PROFILES, {
+    errorMap: () => ({ message: "Select the contact person's role" }),
+  }),
+  // Free-text role, required only when contact_person_profile === "Other". The
+  // submit layer sends this value as the contact_person_profile when "Other" is
+  // picked.
+  contact_person_profile_other: z.string().trim().max(60).optional().or(z.literal("")),
   phone: z
     .string()
     .trim()
@@ -78,6 +86,17 @@ export const ticketSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["business_type_other"],
       message: "Please specify your business type",
+    });
+  }
+  // Likewise, an "Other" contact role must be typed out.
+  if (
+    val.contact_person_profile === "Other" &&
+    !val.contact_person_profile_other?.trim()
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["contact_person_profile_other"],
+      message: "Please specify the contact person's role",
     });
   }
 });
