@@ -438,13 +438,22 @@ export default function AdminTicketsPage() {
                         {t.city}, {t.state}
                       </div>
                       {t.raised_by ? (
-                        <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
-                          Created by {t.raised_by.name}
+                        <div
+                          className="mt-1.5 inline-flex max-w-[210px] items-center gap-1.5 rounded-md border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted"
+                          title={`Created by ${t.raised_by.name}`}
+                        >
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-subtle" aria-hidden />
+                          <span className="truncate">Created by {t.raised_by.name}</span>
                         </div>
                       ) : (
-                        <div className="mt-1 inline-flex items-center rounded-full border border-line bg-surface-raised px-2 py-0.5 text-[11px] text-ink-muted">
-                          Raised by customer — {t.contact_name}
-                          {t.contact_person_profile ? ` — ${t.contact_person_profile}` : ""}
+                        <div
+                          className="mt-1.5 inline-flex max-w-[210px] items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+                          title={`Raised by customer — ${t.contact_name}${t.contact_person_profile ? ` — ${t.contact_person_profile}` : ""}`}
+                        >
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+                          <span className="truncate">
+                            Customer{t.contact_person_profile ? ` · ${t.contact_person_profile}` : ""}
+                          </span>
                         </div>
                       )}
                     </Td>
