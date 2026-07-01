@@ -1513,7 +1513,8 @@ function ActionPanel(props: {
   };
 
   const canAcknowledge = canModerate && ticket.status === "OPEN";
-  const canAssign = canModerate && ["ACKNOWLEDGED", "ASSIGNED", "ACCEPTED"].includes(ticket.status);
+  const canAssign =
+    canModerate && ["ACKNOWLEDGED", "ASSIGNED", "ACCEPTED", "RESOLVING"].includes(ticket.status);
   // Warranty must be decided before assigning. Mirrors the backend gate so the
   // user sees why assigning is blocked instead of hitting a 400.
   const warrantyUnknown = ticket.warranty_status === "UNKNOWN";
@@ -1530,6 +1531,12 @@ function ActionPanel(props: {
   const openAttempt = (ticket.attempts ?? []).find((a) => !a.ended_at) ?? null;
   const endedAttempts = (ticket.attempts ?? []).filter((a) => a.ended_at).length;
   const attemptsReady = !openAttempt && endedAttempts > 0;
+
+  // A mid-resolution ticket can be reassigned to another engineer, but not
+  // while the current engineer still has an attempt open — the backend rejects
+  // it (409), so surface the reason and block the button up front.
+  const reassignBlockedByOpenAttempt =
+    ticket.status === "RESOLVING" && !!ticket.assigned_engineer && !!openAttempt;
 
   // Sub-engineers can be added once ticket is acknowledged, by assignee / Admin / Manager.
   const isAssignee = ticket.assigned_engineer?.id === currentUserId;
@@ -1666,12 +1673,19 @@ function ActionPanel(props: {
               before assigning this ticket.
             </p>
           )}
+          {reassignBlockedByOpenAttempt && (
+            <p className="mt-3 rounded-xl2 border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">
+              {ticket.assigned_engineer?.name ?? "The current engineer"} has a
+              work attempt still in progress. Ask them to end their current
+              attempt before this ticket can be reassigned.
+            </p>
+          )}
           <Button
             type="button"
             variant="primary"
             size="md"
             loading={acting === "assign"}
-            disabled={warrantyUnknown}
+            disabled={warrantyUnknown || reassignBlockedByOpenAttempt}
             onClick={onAssign}
             className="mt-3 w-full"
           >
