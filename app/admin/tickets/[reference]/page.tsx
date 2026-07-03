@@ -61,6 +61,10 @@ type AdminTicket = {
   status: string;
   warranty_status: string;
   service_type: string;
+  // Third-party support details (only for THIRD_PARTY_SUPPORT tickets).
+  third_party_device_name?: string | null;
+  third_party_issue_info?: string | null;
+  third_party_ticket_ref?: string | null;
   // Payment tracking. payment_status null = legacy ticket (never gated).
   // payment_required is the backend-computed gate (OOW, or covered + charges).
   payment_status?: "PENDING" | "COLLECTED" | null;
@@ -149,6 +153,7 @@ const WARRANTY_OPTIONS = ["UNDER_WARRANTY", "OUT_OF_WARRANTY", "AMC"] as const;
 const SERVICE_TYPE_OPTIONS = [
   { value: "SITE_VISIT", label: "Site visit" },
   { value: "REMOTE_SUPPORT", label: "Remote support" },
+  { value: "THIRD_PARTY_SUPPORT", label: "Third-party support" },
 ] as const;
 const SEVERITY_OPTIONS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 const SEVERITY_DOTS: Record<string, string> = {
@@ -591,6 +596,12 @@ export default function TicketDetailPage() {
   const handleServiceType = (next: string) =>
     callAction(`service-type-${next}`, "/service-type", "PATCH", { service_type: next });
 
+  const handleThirdPartyInfo = (payload: {
+    third_party_device_name: string;
+    third_party_issue_info: string;
+    third_party_ticket_ref: string;
+  }) => callAction("third-party-info", "/third-party-info", "PATCH", payload);
+
   const handleSeverity = (next: string) =>
     callAction(`severity-${next}`, "/severity", "PATCH", { severity: next });
 
@@ -923,6 +934,9 @@ export default function TicketDetailPage() {
   const isAdmin = user.role === "ADMIN";
   // Remote-support tickets need no signatures, PDF, spare parts or shipments.
   const isRemote = ticket.service_type === "REMOTE_SUPPORT";
+  // Third-party tickets: no spare parts or shipments (service charge only), and
+  // only the engineer signs. Charges/shipments UI is treated like remote.
+  const isThirdParty = ticket.service_type === "THIRD_PARTY_SUPPORT";
 
   return (
     <AdminShell>
@@ -1043,6 +1057,21 @@ export default function TicketDetailPage() {
               )}
             </DetailBlock>
 
+            {isThirdParty && (
+              <DetailBlock title="Third-party support">
+                <Row label="Device name" value={ticket.third_party_device_name || "—"} />
+                <Row label="Ticket reference" value={ticket.third_party_ticket_ref || "—"} />
+                {ticket.third_party_issue_info && (
+                  <div className="px-4 py-3.5">
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-ink-subtle">Issue info</div>
+                    <p className="mt-1.5 whitespace-pre-wrap text-[14px] leading-relaxed text-ink">
+                      {ticket.third_party_issue_info}
+                    </p>
+                  </div>
+                )}
+              </DetailBlock>
+            )}
+
             {ticket.attachments.length > 0 && (
               <DetailBlock title={`Attachments (${ticket.attachments.length})`}>
                 <div className="px-2 py-2">
@@ -1143,6 +1172,7 @@ export default function TicketDetailPage() {
               onSelfAssign={handleSelfAssign}
               onWarranty={handleWarranty}
               onServiceType={handleServiceType}
+              onThirdPartyInfo={handleThirdPartyInfo}
               onSeverity={handleSeverity}
               onAccept={handleAccept}
               onStartWork={handleStartWork}
@@ -1155,7 +1185,7 @@ export default function TicketDetailPage() {
               defaultPaymentAmount={charges?.grand_total_inr ?? 0}
               onCollectPayment={handleCollectPayment}
             />
-            {!isRemote && (
+            {!isRemote && !isThirdParty && (
               <ShipmentsCard
                 shipments={shipments}
                 canShip={
@@ -1186,7 +1216,7 @@ export default function TicketDetailPage() {
             <Spares
               charges={charges}
               catalog={spareCatalog}
-              remote={isRemote}
+              remote={isRemote || isThirdParty}
               canManage={
                 // Invoice freezes at RESOLVED — no edits by anyone after that,
                 // since the figures travel into the signed resolution PDF.
@@ -1461,6 +1491,11 @@ function ActionPanel(props: {
   onSelfAssign: () => void;
   onWarranty: (next: string) => void;
   onServiceType: (next: string) => void;
+  onThirdPartyInfo: (payload: {
+    third_party_device_name: string;
+    third_party_issue_info: string;
+    third_party_ticket_ref: string;
+  }) => void | Promise<void>;
   onSeverity: (next: string) => void;
   onAccept: () => void;
   onStartWork: () => void;
@@ -1478,7 +1513,7 @@ function ActionPanel(props: {
     hasUndeliveredShipments,
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
-    onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onSeverity,
+    onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onThirdPartyInfo, onSeverity,
     onAccept, onStartWork, onResolve, onEngineerSign, onCustomerSign,
     onGenerateFieldLink, onDownloadPdf, onRegenPdf,
     defaultPaymentAmount, onCollectPayment,
@@ -1497,6 +1532,17 @@ function ActionPanel(props: {
   useEffect(() => {
     if (!custName && ticket.contact_name) setCustName(ticket.contact_name);
   }, [ticket.contact_name, custName]);
+
+  // Third-party support details (editable until the ticket is closed). Kept in
+  // sync with the ticket so a save (which refetches) reflects the stored values.
+  const [tpDevice, setTpDevice] = useState(ticket.third_party_device_name ?? "");
+  const [tpIssue, setTpIssue] = useState(ticket.third_party_issue_info ?? "");
+  const [tpRef, setTpRef] = useState(ticket.third_party_ticket_ref ?? "");
+  useEffect(() => {
+    setTpDevice(ticket.third_party_device_name ?? "");
+    setTpIssue(ticket.third_party_issue_info ?? "");
+    setTpRef(ticket.third_party_ticket_ref ?? "");
+  }, [ticket.third_party_device_name, ticket.third_party_issue_info, ticket.third_party_ticket_ref]);
 
   const submitCustomerSig = async () => {
     const blob = await custPadRef.current?.getBlob();
@@ -1519,6 +1565,9 @@ function ActionPanel(props: {
   // user sees why assigning is blocked instead of hitting a 400.
   const warrantyUnknown = ticket.warranty_status === "UNKNOWN";
   const isRemote = ticket.service_type === "REMOTE_SUPPORT";
+  // Third-party support: engineer signature only (no customer signature), and
+  // no spares (service charge only). Charges UI is treated like remote.
+  const isThirdParty = ticket.service_type === "THIRD_PARTY_SUPPORT";
 
   // Engineer-style actions (accept / start / resolve / sign) are available to
   // whoever the ticket is currently assigned to — engineer, owner, or manager
@@ -1557,14 +1606,22 @@ function ActionPanel(props: {
       ? `${window.location.origin}/field-sign/${fieldSignToken}`
       : "";
   // Engineer captures customer's signature on their device first…
+  // (Third-party tickets skip the customer signature entirely.)
   const canCaptureCustomer =
-    isMyTicket && ticket.status === "RESOLVED" && !customerSigned && !fieldMode;
-  // …then signs themselves to close the ticket.
+    !isThirdParty && isMyTicket && ticket.status === "RESOLVED" && !customerSigned && !fieldMode;
+  // …then signs themselves to close the ticket. On third-party tickets the
+  // engineer signs directly, with no customer signature required first.
   const canEngineerSign =
-    isMyTicket && ticket.status === "RESOLVED" && customerSigned && !engineerSigned && !fieldMode;
+    isMyTicket &&
+    ticket.status === "RESOLVED" &&
+    (isThirdParty || customerSigned) &&
+    !engineerSigned &&
+    !fieldMode;
   // Generate the remote sub-engineer signing link — only once a sub-engineer
-  // is on the ticket and signing hasn't started on-site.
+  // is on the ticket and signing hasn't started on-site. Not for third-party
+  // (that flow collects a customer signature, which third-party doesn't use).
   const canGenerateFieldLink =
+    !isThirdParty &&
     (isMyTicket || canModerate) &&
     ticket.status === "RESOLVED" &&
     hasSubEngineer &&
@@ -1797,6 +1854,8 @@ function ActionPanel(props: {
               <p className="text-[12px] text-ink-subtle">
                 {isRemote
                   ? "Remote support — this resolves and closes the ticket immediately. No signatures or PDF."
+                  : isThirdParty
+                  ? "After resolving, add your engineer signature to close the ticket. No customer signature is needed."
                   : "After resolving, capture the customer + engineer signatures to close the ticket."}
               </p>
             </div>
@@ -1809,14 +1868,16 @@ function ActionPanel(props: {
         <div className="border-t border-line pt-5">
           <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">Signatures</p>
           <div className="mt-2 space-y-1.5 text-[13px]">
-            <div className="flex items-center gap-2">
-              <span className={`h-1.5 w-1.5 rounded-full ${customerSigned ? "bg-emerald-500" : "bg-amber-500"}`} />
-              <span className="text-ink">
-                Customer: {customerSigned ? (
-                  <>signed by <strong>{ticket.resolution.customer_signer_name}</strong></>
-                ) : "awaiting signature"}
-              </span>
-            </div>
+            {!isThirdParty && (
+              <div className="flex items-center gap-2">
+                <span className={`h-1.5 w-1.5 rounded-full ${customerSigned ? "bg-emerald-500" : "bg-amber-500"}`} />
+                <span className="text-ink">
+                  Customer: {customerSigned ? (
+                    <>signed by <strong>{ticket.resolution.customer_signer_name}</strong></>
+                  ) : "awaiting signature"}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${engineerSigned ? "bg-emerald-500" : "bg-neutral-300"}`} />
               <span className="text-ink">
@@ -1838,7 +1899,7 @@ function ActionPanel(props: {
               Waiting for the sub-engineer to submit both signatures via the shared link.
             </p>
           )}
-          {!fieldMode && !customerSigned && !canCaptureCustomer && (
+          {!isThirdParty && !fieldMode && !customerSigned && !canCaptureCustomer && (
             <p className="mt-3 text-[12px] text-ink-subtle">
               The assigned engineer captures the customer&apos;s signature on-site.
             </p>
@@ -1851,7 +1912,8 @@ function ActionPanel(props: {
         // Collect is available for remote tickets once RESOLVED, and for site
         // visits once both signatures are in. The amount entered must be
         // 1..pending; the ticket closes only when the balance reaches ₹0.
-        const canCollectNow = isRemote || (customerSigned && engineerSigned);
+        const canCollectNow =
+          isRemote || (isThirdParty ? engineerSigned : customerSigned && engineerSigned);
         const draftNum = parseInt((paymentDraft ?? String(amountPending)) || "0", 10);
         const validDraft = draftNum > 0 && draftNum <= amountPending;
         const clearsBalance = draftNum === amountPending;
@@ -2014,7 +2076,7 @@ function ActionPanel(props: {
       {canEngineerSign && (
         <div className="border-t border-line pt-5">
           <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
-            Step 2 · Your countersignature
+            {isThirdParty ? "Engineer signature" : "Step 2 · Your countersignature"}
           </p>
           <p className="mt-1 text-[12.5px] text-ink-muted">
             Signing will close the ticket and generate the resolution PDF.
@@ -2149,6 +2211,7 @@ function ActionPanel(props: {
           <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">Service type</p>
           <p className="mt-1 text-[12.5px] text-ink-muted">
             Remote support skips signatures, PDF and spare parts, and closes in one step.
+            Third-party support closes on your signature alone (no customer signature).
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {SERVICE_TYPE_OPTIONS.map((opt) => {
@@ -2171,6 +2234,62 @@ function ActionPanel(props: {
               );
             })}
           </div>
+
+          {/* Third-party support details — editable until the ticket is closed.
+              Device name + issue info are required to close (backend enforced). */}
+          {ticket.service_type === "THIRD_PARTY_SUPPORT" && (
+            <div className="mt-4 space-y-2.5">
+              <label className="block">
+                <span className="text-[11.5px] text-ink-subtle">Third-party device name *</span>
+                <input
+                  type="text"
+                  value={tpDevice}
+                  onChange={(e) => setTpDevice(e.target.value)}
+                  disabled={ticket.status === "CLOSED"}
+                  placeholder="e.g. Epson TM-T88 printer"
+                  className="mt-1 w-full rounded-md border border-line bg-white px-2.5 py-1.5 text-[13px] text-ink disabled:opacity-50"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[11.5px] text-ink-subtle">Issue info *</span>
+                <textarea
+                  value={tpIssue}
+                  onChange={(e) => setTpIssue(e.target.value)}
+                  disabled={ticket.status === "CLOSED"}
+                  rows={2}
+                  placeholder="Describe the third-party device issue"
+                  className="mt-1 w-full rounded-md border border-line bg-white px-2.5 py-1.5 text-[13px] text-ink disabled:opacity-50"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[11.5px] text-ink-subtle">Third-party ticket reference (optional)</span>
+                <input
+                  type="text"
+                  value={tpRef}
+                  onChange={(e) => setTpRef(e.target.value)}
+                  disabled={ticket.status === "CLOSED"}
+                  placeholder="Reference no. in the third party's system"
+                  className="mt-1 w-full rounded-md border border-line bg-white px-2.5 py-1.5 text-[13px] text-ink disabled:opacity-50"
+                />
+              </label>
+              {ticket.status !== "CLOSED" && (
+                <button
+                  type="button"
+                  disabled={acting === "third-party-info"}
+                  onClick={() =>
+                    onThirdPartyInfo({
+                      third_party_device_name: tpDevice.trim(),
+                      third_party_issue_info: tpIssue.trim(),
+                      third_party_ticket_ref: tpRef.trim(),
+                    })
+                  }
+                  className="rounded-md border border-ink bg-ink px-3 py-1.5 text-[12px] text-white transition-colors hover:bg-ink-soft disabled:opacity-50"
+                >
+                  {acting === "third-party-info" ? "Saving…" : "Save third-party details"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
