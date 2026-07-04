@@ -79,10 +79,10 @@ export default function AnalyticsPage() {
   }, [authFetch, days, router]);
 
   useEffect(() => {
-    if (user?.role === "ADMIN") fetchAnalytics();
+    if (user?.role === "ADMIN" || user?.role === "MANAGER") fetchAnalytics();
   }, [user, fetchAnalytics]);
 
-  if (!ready || !user || user.role !== "ADMIN") return null;
+  if (!ready || !user || (user.role !== "ADMIN" && user.role !== "MANAGER")) return null;
 
   return (
     <AdminShell>

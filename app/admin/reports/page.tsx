@@ -128,7 +128,7 @@ export default function ReportsPage() {
   }, [authFetch, dateFrom, dateTo, router]);
 
   useEffect(() => {
-    if (user?.role === "ADMIN") fetchReport();
+    if (user?.role === "ADMIN" || user?.role === "MANAGER") fetchReport();
   }, [user, fetchReport]);
 
   const stageLabel = useMemo(() => {
@@ -208,7 +208,7 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
-  if (!ready || !user || user.role !== "ADMIN") return null;
+  if (!ready || !user || (user.role !== "ADMIN" && user.role !== "MANAGER")) return null;
 
   return (
     <AdminShell>
