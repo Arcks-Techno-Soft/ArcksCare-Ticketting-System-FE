@@ -72,8 +72,8 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["ADMIN", "MANAGER"],
     matchPrefix: "/admin/warranties",
   },
-  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["ADMIN"] },
-  { label: "Reports", href: "/admin/reports", icon: FileBarChart, roles: ["ADMIN"], matchPrefix: "/admin/reports" },
+  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
+  { label: "Reports", href: "/admin/reports", icon: FileBarChart, roles: ["ADMIN", "MANAGER"], matchPrefix: "/admin/reports" },
   { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["ADMIN"], matchPrefix: "/admin/settings" },
 ];
 

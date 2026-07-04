@@ -57,7 +57,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "ADMIN") router.replace("/admin/tickets");
+    else if (user.role !== "ADMIN" && user.role !== "MANAGER") router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   const fetchAnalytics = useCallback(async () => {
