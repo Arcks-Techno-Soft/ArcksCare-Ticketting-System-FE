@@ -36,6 +36,37 @@ const DURATION_OPTIONS = [
   ...WARRANTY_DURATIONS_MONTHS.map((m) => `${m} months`),
   DURATION_OTHER,
 ];
+const DEFAULT_DURATION = `${WARRANTY_DURATIONS_MONTHS[1]} months`; // 12 months
+
+/** One product line in the form. Invoice number/date/notes are shared across
+ *  all rows; each product carries its own name, serial and duration. */
+type ProductRow = {
+  productName: string;
+  serial: string;
+  durationChoice: string;
+  customMonths: string;
+  dupWarning: string | null;
+};
+
+function emptyProductRow(): ProductRow {
+  return {
+    productName: "",
+    serial: "",
+    durationChoice: DEFAULT_DURATION,
+    customMonths: "",
+    dupWarning: null,
+  };
+}
+
+/** Resolve a row's chosen duration to a number of months (or null if invalid). */
+function rowMonths(row: ProductRow): number | null {
+  if (row.durationChoice === DURATION_OTHER) {
+    const n = Number(row.customMonths);
+    return Number.isInteger(n) && n >= 1 && n <= 120 ? n : null;
+  }
+  const n = parseInt(row.durationChoice, 10);
+  return Number.isFinite(n) ? n : null;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Date helpers — the form captures sale date as DD-MM-YYYY                    */
@@ -87,14 +118,12 @@ export default function WarrantyManagementPage() {
   const router = useRouter();
   const { ready, user, authFetch } = useAuth();
 
-  // Form fields
-  const [productName, setProductName] = useState("");
-  const [serial, setSerial] = useState("");
+  // Form fields — invoice number/date/notes are shared; products is the
+  // repeatable list registered together under that one invoice.
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [saleDate, setSaleDate] = useState(""); // Invoice date, DD-MM-YYYY
-  const [durationChoice, setDurationChoice] = useState(`${WARRANTY_DURATIONS_MONTHS[1]} months`); // default 12
-  const [customMonths, setCustomMonths] = useState("");
   const [notes, setNotes] = useState("");
+  const [products, setProducts] = useState<ProductRow[]>([emptyProductRow()]);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,8 +134,8 @@ export default function WarrantyManagementPage() {
   const [search, setSearch] = useState("");
   const [loadingList, setLoadingList] = useState(false);
 
-  // Live duplicate warning (serial already registered)
-  const [dupWarning, setDupWarning] = useState<string | null>(null);
+  // Live duplicate warning (serial already registered) — one abort controller
+  // reused across per-row serial lookups (blurs happen one at a time).
   const dupAbort = useRef<AbortController | null>(null);
 
   // Only Admin / Manager may use this section.
@@ -121,24 +150,30 @@ export default function WarrantyManagementPage() {
     }
   }, [ready, user, allowed, router]);
 
-  /* ---- resolve the chosen duration to a number of months ---- */
-  const months: number | null = useMemo(() => {
-    if (durationChoice === DURATION_OTHER) {
-      const n = Number(customMonths);
-      return Number.isInteger(n) && n >= 1 && n <= 120 ? n : null;
-    }
-    const n = parseInt(durationChoice, 10);
-    return Number.isFinite(n) ? n : null;
-  }, [durationChoice, customMonths]);
+  /* ---- shared sale date, parsed once ---- */
+  const saleDateObj = useMemo(() => parseDMY(saleDate), [saleDate]);
 
-  /* ---- live expiry preview ---- */
-  const preview = useMemo(() => {
-    const d = parseDMY(saleDate);
-    if (!d || months == null) return null;
-    const expiry = addMonths(new Date(d), months);
-    const left = daysBetween(new Date(), new Date(expiry));
-    return { expiry, left };
-  }, [saleDate, months]);
+  /* ---- per-row expiry preview (shared invoice date + the row's duration) ---- */
+  const rowPreview = useCallback(
+    (row: ProductRow) => {
+      const m = rowMonths(row);
+      if (!saleDateObj || m == null) return null;
+      const expiry = addMonths(new Date(saleDateObj), m);
+      const left = daysBetween(new Date(), new Date(expiry));
+      return { expiry, left };
+    },
+    [saleDateObj]
+  );
+
+  /* ---- product row mutators ---- */
+  const updateRow = useCallback(
+    (i: number, patch: Partial<ProductRow>) =>
+      setProducts((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r))),
+    []
+  );
+  const addRow = () => setProducts((prev) => [...prev, emptyProductRow()]);
+  const removeRow = (i: number) =>
+    setProducts((prev) => (prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i)));
 
   /* ---- load registry ---- */
   const loadList = useCallback(
@@ -170,81 +205,89 @@ export default function WarrantyManagementPage() {
     return () => clearTimeout(t);
   }, [search, user, allowed, loadList]);
 
-  /* ---- check serial on blur ---- */
-  const checkSerial = useCallback(async () => {
-    const s = serial.trim();
-    setDupWarning(null);
-    if (!s) return;
-    dupAbort.current?.abort();
-    const ac = new AbortController();
-    dupAbort.current = ac;
-    try {
-      const url = new URL(`${API_BASE_URL}/api/v1/admin/warranties/lookup`);
-      url.searchParams.set("serial", s);
-      const res = await authFetch(url.toString(), { signal: ac.signal });
-      if (res.ok) {
-        const data = (await res.json()) as { found: boolean; warranty?: WarrantyOut };
-        if (data.found && data.warranty) {
-          setDupWarning(
-            `Already added warranty for this product — serial ${data.warranty.serial_number} ` +
-              `(${data.warranty.product_name}), expires ${fmtIstDate(data.warranty.expiry_date)}.`
-          );
+  /* ---- check a row's serial on blur ---- */
+  const checkSerial = useCallback(
+    async (i: number, serialValue: string) => {
+      const s = serialValue.trim();
+      updateRow(i, { dupWarning: null });
+      if (!s) return;
+      dupAbort.current?.abort();
+      const ac = new AbortController();
+      dupAbort.current = ac;
+      try {
+        const url = new URL(`${API_BASE_URL}/api/v1/admin/warranties/lookup`);
+        url.searchParams.set("serial", s);
+        const res = await authFetch(url.toString(), { signal: ac.signal });
+        if (res.ok) {
+          const data = (await res.json()) as { found: boolean; warranty?: WarrantyOut };
+          if (data.found && data.warranty) {
+            updateRow(i, {
+              dupWarning:
+                `Already registered — serial ${data.warranty.serial_number} ` +
+                `(${data.warranty.product_name}), expires ${fmtIstDate(data.warranty.expiry_date)}.`,
+            });
+          }
         }
+      } catch {
+        /* ignore — the create call still enforces uniqueness */
       }
-    } catch {
-      /* ignore — the create call still enforces uniqueness */
-    }
-  }, [serial, authFetch]);
+    },
+    [authFetch, updateRow]
+  );
 
   const resetForm = () => {
-    setProductName("");
-    setSerial("");
     setInvoiceNumber("");
     setSaleDate("");
-    setDurationChoice(`${WARRANTY_DURATIONS_MONTHS[1]} months`);
-    setCustomMonths("");
     setNotes("");
-    setDupWarning(null);
+    setProducts([emptyProductRow()]);
   };
 
-  /* ---- submit ---- */
+  /* ---- submit — registers every product under the shared invoice atomically ---- */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
 
-    if (productName.trim().length < 1) return setError("Select or type a product name.");
-    if (serial.trim().length < 1) return setError("Enter the product serial number.");
     if (invoiceNumber.trim().length < 1) return setError("Enter the invoice number.");
     const d = parseDMY(saleDate);
     if (!d) return setError("Enter the invoice date as DD-MM-YYYY.");
     if (d.getTime() > Date.now()) return setError("Invoice date cannot be in the future.");
-    if (months == null) return setError("Choose a warranty duration (or type a custom number of months).");
+
+    // Validate every product row.
+    const items: { product_name: string; serial_number: string; warranty_months: number }[] = [];
+    const seenSerials = new Set<string>();
+    for (let i = 0; i < products.length; i++) {
+      const row = products[i];
+      const n = products.length > 1 ? ` for product ${i + 1}` : "";
+      if (row.productName.trim().length < 1) return setError(`Select or type a product name${n}.`);
+      if (row.serial.trim().length < 1) return setError(`Enter the serial number${n}.`);
+      const m = rowMonths(row);
+      if (m == null) return setError(`Choose a warranty duration${n} (or type a custom number of months).`);
+      const key = row.serial.trim().replace(/\s+/g, " ").toUpperCase();
+      if (seenSerials.has(key)) return setError(`Serial "${row.serial.trim()}" is entered more than once.`);
+      seenSerials.add(key);
+      items.push({
+        product_name: row.productName.trim(),
+        serial_number: row.serial.trim(),
+        warranty_months: m,
+      });
+    }
 
     const payload = {
-      product_name: productName.trim(),
-      serial_number: serial.trim(),
       invoice_number: invoiceNumber.trim(),
       sale_date: toISODate(d),
-      warranty_months: months,
       notes: notes.trim() || null,
+      products: items,
     };
 
     setSubmitting(true);
     try {
-      const res = await authFetch(`${API_BASE_URL}/api/v1/admin/warranties`, {
+      const res = await authFetch(`${API_BASE_URL}/api/v1/admin/warranties/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (res.status === 409) {
-        // Duplicate serial — surface the exact alert the team asked for.
-        alert("Already added warranty for this product");
-        setError("This serial number already has a registered warranty.");
-        setDupWarning("Already added warranty for this product.");
-        return;
-      }
       if (!res.ok) {
         const text = await res.text();
         let msg = `Server ${res.status}`;
@@ -254,15 +297,20 @@ export default function WarrantyManagementPage() {
         } catch {
           msg = text.slice(0, 200);
         }
-        throw new Error(msg);
+        // 409 = one or more serials already registered (nothing was saved).
+        if (res.status === 409) alert("Already added warranty for one of these products");
+        setError(msg);
+        return;
       }
 
-      const created = (await res.json()) as WarrantyOut;
+      const created = (await res.json()) as WarrantyOut[];
       setSuccess(
-        `Warranty registered for ${created.product_name} (serial ${created.serial_number}). ` +
-          `Covered until ${fmtIstDate(created.expiry_date)}.`
+        created.length === 1
+          ? `Warranty registered for ${created[0].product_name} (serial ${created[0].serial_number}). ` +
+              `Covered until ${fmtIstDate(created[0].expiry_date)}.`
+          : `${created.length} warranties registered under invoice ${invoiceNumber.trim()}.`
       );
-      setRows((prev) => [created, ...prev]);
+      setRows((prev) => [...created, ...prev]);
       resetForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
@@ -301,45 +349,8 @@ export default function WarrantyManagementPage() {
           onSubmit={handleSubmit}
           className="mt-8 space-y-5 rounded-xl2 border border-line bg-white p-6"
         >
-          <div>
-            <Label htmlFor="product" required>Product name</Label>
-            <Input
-              id="product"
-              list="warranty-products"
-              value={productName}
-              onChange={(e) => setProductName(e.target.value)}
-              placeholder="Start typing or pick from the list…"
-              autoComplete="off"
-            />
-            <datalist id="warranty-products">
-              {WARRANTY_PRODUCTS.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
-            <p className="mt-1 text-[12px] text-ink-subtle">
-              {WARRANTY_PRODUCTS.length} products from your sales records — or type your own.
-            </p>
-          </div>
-
+          {/* Shared invoice fields — one invoice covers every product below. */}
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div>
-              <Label htmlFor="serial" required>Serial number</Label>
-              <Input
-                id="serial"
-                value={serial}
-                onChange={(e) => {
-                  setSerial(e.target.value);
-                  setDupWarning(null);
-                }}
-                onBlur={checkSerial}
-                placeholder="e.g. S2407050022"
-                autoComplete="off"
-              />
-              {dupWarning && (
-                <p className="mt-1.5 text-[12.5px] text-accent-danger">{dupWarning}</p>
-              )}
-            </div>
-
             <div>
               <Label htmlFor="invoice_number" required>Invoice number</Label>
               <Input
@@ -350,11 +361,8 @@ export default function WarrantyManagementPage() {
                 autoComplete="off"
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <div>
-              <Label htmlFor="sale_date" required>Invoice Date</Label>
+              <Label htmlFor="sale_date" required>Invoice date</Label>
               <Input
                 id="sale_date"
                 value={saleDate}
@@ -366,53 +374,133 @@ export default function WarrantyManagementPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div>
-              <Label htmlFor="duration" required>Warranty duration</Label>
-              <Select
-                id="duration"
-                options={DURATION_OPTIONS}
-                placeholder="Select duration"
-                value={durationChoice}
-                onChange={(e) => setDurationChoice(e.target.value)}
-              />
-              {durationChoice === DURATION_OTHER && (
-                <Input
-                  className="mt-2"
-                  value={customMonths}
-                  onChange={(e) => setCustomMonths(e.target.value.replace(/[^\d]/g, ""))}
-                  placeholder="Months (e.g. 9)"
-                  inputMode="numeric"
-                  aria-label="Custom warranty months"
-                />
-              )}
+          {/* Shared product datalist, used by every product row's autocomplete. */}
+          <datalist id="warranty-products">
+            {WARRANTY_PRODUCTS.map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
+
+          {/* Products — one row per unit sold on this invoice. */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Products</Label>
+              <span className="text-[12px] text-ink-subtle">
+                {products.length} product{products.length === 1 ? "" : "s"} on this invoice
+              </span>
             </div>
 
-            <div>
-              <Label>Warranty expires</Label>
-              <div className="mt-1 flex h-[52px] items-center rounded-xl2 border border-line bg-surface-raised px-4 text-[14px]">
-                {preview ? (
-                  <span className="text-ink">
-                    {fmtIstDate(preview.expiry)}
-                    <span
-                      className={`ml-2 text-[12.5px] ${
-                        preview.left >= 0 ? "text-emerald-600" : "text-accent-danger"
-                      }`}
+            {products.map((row, i) => {
+              const preview = rowPreview(row);
+              return (
+                <div
+                  key={i}
+                  className="relative space-y-4 rounded-xl2 border border-line p-4"
+                >
+                  {products.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeRow(i)}
+                      className="absolute right-3 top-3 rounded-md px-2 py-0.5 text-[12px] text-ink-subtle hover:text-accent-danger"
+                      aria-label={`Remove product ${i + 1}`}
                     >
-                      {preview.left >= 0
-                        ? `· ${preview.left} day${preview.left === 1 ? "" : "s"} left`
-                        : "· expired"}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="text-ink-subtle">Fill invoice date + duration</span>
-                )}
-              </div>
-            </div>
+                      ✕ Remove
+                    </button>
+                  )}
+
+                  <div>
+                    <Label htmlFor={`product-${i}`} required>Product name</Label>
+                    <Input
+                      id={`product-${i}`}
+                      list="warranty-products"
+                      value={row.productName}
+                      onChange={(e) => updateRow(i, { productName: e.target.value })}
+                      placeholder="Start typing or pick from the list…"
+                      autoComplete="off"
+                    />
+                    {i === 0 && (
+                      <p className="mt-1 text-[12px] text-ink-subtle">
+                        {WARRANTY_PRODUCTS.length} products from your sales records — or type your own.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+                    <div>
+                      <Label htmlFor={`serial-${i}`} required>Serial number</Label>
+                      <Input
+                        id={`serial-${i}`}
+                        value={row.serial}
+                        onChange={(e) => updateRow(i, { serial: e.target.value, dupWarning: null })}
+                        onBlur={(e) => checkSerial(i, e.target.value)}
+                        placeholder="e.g. S2407050022"
+                        autoComplete="off"
+                      />
+                      {row.dupWarning && (
+                        <p className="mt-1.5 text-[12.5px] text-accent-danger">{row.dupWarning}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`duration-${i}`} required>Warranty duration</Label>
+                      <Select
+                        id={`duration-${i}`}
+                        options={DURATION_OPTIONS}
+                        placeholder="Select duration"
+                        value={row.durationChoice}
+                        onChange={(e) => updateRow(i, { durationChoice: e.target.value })}
+                      />
+                      {row.durationChoice === DURATION_OTHER && (
+                        <Input
+                          className="mt-2"
+                          value={row.customMonths}
+                          onChange={(e) =>
+                            updateRow(i, { customMonths: e.target.value.replace(/[^\d]/g, "") })
+                          }
+                          placeholder="Months (e.g. 9)"
+                          inputMode="numeric"
+                          aria-label="Custom warranty months"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <Label>Warranty expires</Label>
+                      <div className="mt-1 flex h-[52px] items-center rounded-xl2 border border-line bg-surface-raised px-4 text-[14px]">
+                        {preview ? (
+                          <span className="text-ink">
+                            {fmtIstDate(preview.expiry)}
+                            <span
+                              className={`ml-2 text-[12.5px] ${
+                                preview.left >= 0 ? "text-emerald-600" : "text-accent-danger"
+                              }`}
+                            >
+                              {preview.left >= 0
+                                ? `· ${preview.left} day${preview.left === 1 ? "" : "s"} left`
+                                : "· expired"}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-ink-subtle">Fill invoice date + duration</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={addRow}
+              className="w-full rounded-xl2 border border-dashed border-line py-2.5 text-[13px] text-ink-muted transition-colors hover:border-ink-soft hover:text-ink"
+            >
+              + Add product
+            </button>
           </div>
 
           <div>
-            <Label htmlFor="notes">Notes (optional)</Label>
+            <Label htmlFor="notes">Notes (optional, applies to the whole invoice)</Label>
             <Textarea
               id="notes"
               rows={2}
@@ -432,7 +520,7 @@ export default function WarrantyManagementPage() {
               Clear
             </Button>
             <Button type="submit" variant="primary" size="md" loading={submitting}>
-              Register warranty
+              {products.length > 1 ? `Register ${products.length} warranties` : "Register warranty"}
             </Button>
           </div>
         </form>
