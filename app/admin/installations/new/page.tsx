@@ -9,6 +9,8 @@ import { useAuth, API_BASE_URL } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Field";
+import { SuggestionList, useAutocomplete } from "@/components/ui/autocomplete";
+import { fetchBusinessNameSuggestions } from "@/lib/api";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
 import { BUSINESS_TYPES, INDIAN_STATES } from "@/lib/options";
 import type { LocationPayload } from "@/components/address-map";
@@ -118,6 +120,12 @@ export default function NewInstallationPage() {
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
   };
+
+  const businessNameAc = useAutocomplete(
+    form.business_name,
+    (q) => fetchBusinessNameSuggestions(q, authFetch),
+    (name) => update("business_name", name)
+  );
 
   // Pin drop / search result on the map → fill geo + any address parts it returns.
   const onLocationChange = (loc: LocationPayload) => {
@@ -271,12 +279,24 @@ export default function NewInstallationPage() {
         <form onSubmit={handleSubmit} className="mt-8 space-y-5">
           <div>
             <Label htmlFor="biz" required>Business name</Label>
-            <Input
-              id="biz"
-              value={form.business_name}
-              onChange={(e) => update("business_name", e.target.value)}
-              placeholder="e.g. Spice Garden"
-            />
+            <div className="relative">
+              <Input
+                id="biz"
+                value={form.business_name}
+                onChange={(e) => update("business_name", e.target.value)}
+                placeholder="e.g. Spice Garden"
+                autoComplete="off"
+                onFocus={() => businessNameAc.setOpen(true)}
+                onBlur={() => businessNameAc.setOpen(false)}
+                onKeyDown={businessNameAc.onKeyDown}
+              />
+              <SuggestionList
+                suggestions={businessNameAc.suggestions}
+                visible={businessNameAc.visible}
+                activeIndex={businessNameAc.activeIndex}
+                onPick={businessNameAc.pick}
+              />
+            </div>
           </div>
 
           <div>

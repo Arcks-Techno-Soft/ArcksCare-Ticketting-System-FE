@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { TicketForm } from "@/components/ticket-form";
-import { submitTicket } from "@/lib/api";
+import { fetchBusinessNameSuggestions, submitTicket } from "@/lib/api";
 
 /**
  * Staff-facing ticket creation. Any signed-in staff member (Admin / Manager /
@@ -52,6 +52,7 @@ export default function AdminNewTicketPage() {
             submit={(values, files) => submitTicket(values, files, authFetch)}
             submitLabel="Open ticket"
             onCreated={(ticket) => router.push(`/admin/tickets/${ticket.reference}`)}
+            suggestBusinessNames={(q) => fetchBusinessNameSuggestions(q, authFetch)}
           />
         </div>
       </section>

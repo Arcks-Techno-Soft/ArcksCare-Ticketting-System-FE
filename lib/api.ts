@@ -101,3 +101,19 @@ export async function submitTicket(
     return { kind: "error", message: msg };
   }
 }
+
+/**
+ * Staff-only: distinct business names starting with `q`, from past tickets
+ * and installations. Requires an authed fetcher (authFetch) — the public
+ * ticket form must never call this, it would expose the customer list.
+ */
+export async function fetchBusinessNameSuggestions(
+  q: string,
+  fetcher: typeof fetch
+): Promise<string[]> {
+  const res = await fetcher(
+    `${BASE}/api/v1/admin/business-name-suggestions?q=${encodeURIComponent(q)}`
+  );
+  if (!res.ok) return [];
+  return (await res.json()) as string[];
+}

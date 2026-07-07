@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/Field";
 import { TicketSummary } from "@/components/ticket-summary";
 import { FileDropZone, type SelectedFile } from "@/components/file-drop-zone";
+import { SuggestionList, useAutocomplete } from "@/components/ui/autocomplete";
 
 // Leaflet touches `window`, so the map must be client-only.
 const AddressMap = dynamic(() => import("@/components/address-map"), {
@@ -47,9 +48,20 @@ type TicketFormProps = {
   onCreated?: (ticket: TicketCreated) => void;
   /** Optional copy for the submit button (defaults to "Submit ticket"). */
   submitLabel?: string;
+  /**
+   * Staff-only autocomplete for the business-name field. Leave unset on the
+   * public form — the suggestions come from the customer database and need
+   * an authed endpoint.
+   */
+  suggestBusinessNames?: (q: string) => Promise<string[]>;
 };
 
-export function TicketForm({ submit = submitTicket, onCreated, submitLabel }: TicketFormProps = {}) {
+export function TicketForm({
+  submit = submitTicket,
+  onCreated,
+  submitLabel,
+  suggestBusinessNames,
+}: TicketFormProps = {}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("form");
   const [duplicate, setDuplicate] = useState<DuplicateError | null>(null);
@@ -71,6 +83,14 @@ export function TicketForm({ submit = submitTicket, onCreated, submitLabel }: Ti
   const watched = watch();
   const lat = watched.latitude;
   const lng = watched.longitude;
+
+  const businessNameField = register("business_name");
+  const businessNameAc = useAutocomplete(
+    watched.business_name ?? "",
+    suggestBusinessNames,
+    (name) =>
+      setValue("business_name", name, { shouldDirty: true, shouldValidate: true })
+  );
 
   const onLocationChange = (loc: {
     lat: number;
@@ -148,11 +168,26 @@ export function TicketForm({ submit = submitTicket, onCreated, submitLabel }: Ti
         <Grid>
           <FieldGroup className="md:col-span-2">
             <Label htmlFor="business_name" required>Business name</Label>
-            <Input
-              id="business_name"
-              placeholder="e.g. The Oberoi Grand"
-              {...register("business_name")}
-            />
+            <div className="relative">
+              <Input
+                id="business_name"
+                placeholder="e.g. The Oberoi Grand"
+                autoComplete="off"
+                {...businessNameField}
+                onBlur={(e) => {
+                  businessNameField.onBlur(e);
+                  businessNameAc.setOpen(false);
+                }}
+                onFocus={() => businessNameAc.setOpen(true)}
+                onKeyDown={businessNameAc.onKeyDown}
+              />
+              <SuggestionList
+                suggestions={businessNameAc.suggestions}
+                visible={businessNameAc.visible}
+                activeIndex={businessNameAc.activeIndex}
+                onPick={businessNameAc.pick}
+              />
+            </div>
             <FieldError message={errors.business_name?.message} />
           </FieldGroup>
 
