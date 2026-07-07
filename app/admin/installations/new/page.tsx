@@ -124,7 +124,16 @@ export default function NewInstallationPage() {
   const businessNameAc = useAutocomplete(
     form.business_name,
     (q) => fetchBusinessNameSuggestions(q, authFetch),
-    (name) => update("business_name", name)
+    (s) => {
+      update("business_name", s.business_name);
+      // Category is a fixed-option Select here (no free-text), so only pre-fill
+      // when the stored category is one of our preset types; otherwise leave it
+      // for the user to pick.
+      const type = s.business_type?.trim();
+      if (type && (BUSINESS_TYPES as readonly string[]).includes(type)) {
+        update("business_category", type);
+      }
+    }
   );
 
   // Pin drop / search result on the map → fill geo + any address parts it returns.

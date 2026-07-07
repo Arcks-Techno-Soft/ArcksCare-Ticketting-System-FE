@@ -102,18 +102,23 @@ export async function submitTicket(
   }
 }
 
+/** A business-name autocomplete hit: the name plus the category last recorded
+ *  for it (may be an empty string if none was ever stored). */
+export type BusinessSuggestion = { business_name: string; business_type: string };
+
 /**
  * Staff-only: distinct business names starting with `q`, from past tickets
- * and installations. Requires an authed fetcher (authFetch) — the public
- * ticket form must never call this, it would expose the customer list.
+ * and installations, each with its most-recent category. Requires an authed
+ * fetcher (authFetch) — the public ticket form must never call this, it would
+ * expose the customer list.
  */
 export async function fetchBusinessNameSuggestions(
   q: string,
   fetcher: typeof fetch
-): Promise<string[]> {
+): Promise<BusinessSuggestion[]> {
   const res = await fetcher(
     `${BASE}/api/v1/admin/business-name-suggestions?q=${encodeURIComponent(q)}`
   );
   if (!res.ok) return [];
-  return (await res.json()) as string[];
+  return (await res.json()) as BusinessSuggestion[];
 }

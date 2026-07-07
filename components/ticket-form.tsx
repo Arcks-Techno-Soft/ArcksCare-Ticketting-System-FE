@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { ticketSchema, type TicketFormValues } from "@/lib/schema";
-import { submitTicket, type DuplicateError, type SubmitResult, type TicketCreated } from "@/lib/api";
+import { submitTicket, type BusinessSuggestion, type DuplicateError, type SubmitResult, type TicketCreated } from "@/lib/api";
 import {
   BUSINESS_TYPES,
   CONTACT_PERSON_PROFILES,
@@ -53,7 +53,7 @@ type TicketFormProps = {
    * public form — the suggestions come from the customer database and need
    * an authed endpoint.
    */
-  suggestBusinessNames?: (q: string) => Promise<string[]>;
+  suggestBusinessNames?: (q: string) => Promise<BusinessSuggestion[]>;
 };
 
 export function TicketForm({
@@ -88,8 +88,25 @@ export function TicketForm({
   const businessNameAc = useAutocomplete(
     watched.business_name ?? "",
     suggestBusinessNames,
-    (name) =>
-      setValue("business_name", name, { shouldDirty: true, shouldValidate: true })
+    (s) => {
+      setValue("business_name", s.business_name, { shouldDirty: true, shouldValidate: true });
+      // Pre-fill the category from the picked business. A stored value that
+      // isn't one of our preset types came in via "Other", so restore it that
+      // way: select "Other" and put the text in the companion field.
+      const type = s.business_type?.trim();
+      if (type) {
+        if ((BUSINESS_TYPES as readonly string[]).includes(type)) {
+          setValue("business_type", type as TicketFormValues["business_type"], {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+          setValue("business_type_other", "", { shouldDirty: true });
+        } else {
+          setValue("business_type", "Other", { shouldDirty: true, shouldValidate: true });
+          setValue("business_type_other", type, { shouldDirty: true, shouldValidate: true });
+        }
+      }
+    }
   );
 
   const onLocationChange = (loc: {
