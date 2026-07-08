@@ -607,10 +607,39 @@ export default function TicketDetailPage() {
 
   const handleAccept = () => callAction("accept", "/accept");
   const handleStartWork = () => callAction("start", "/start-work");
-  const handleResolve = async () => {
+  const handleResolve = async (serviceFeeInr: number) => {
     if (resolveSummary.trim().length < 10) {
       setActionError("Resolution summary must be at least 10 characters.");
       return;
+    }
+    // Persist the confirmed service charge first (only if it changed at the
+    // confirm step) so the resolution + PDF reflect exactly what was confirmed.
+    if (charges && serviceFeeInr !== charges.service_fee_inr) {
+      setActionError(null);
+      setActing("resolve");
+      try {
+        const res = await authFetch(
+          `${API_BASE_URL}/api/v1/admin/tickets/${reference}/service-fee`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ service_fee_inr: serviceFeeInr }),
+          }
+        );
+        if (!res.ok) {
+          const t = await res.text();
+          let msg = `${res.status}`;
+          try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
+          setActionError(msg);
+          setActing(null);
+          return; // don't resolve if the charge couldn't be saved
+        }
+        setCharges((await res.json()) as ChargesSummary);
+      } catch (e) {
+        setActionError(e instanceof Error ? e.message : "Failed to update service charge");
+        setActing(null);
+        return;
+      }
     }
     await callAction("resolve", "/resolve", "POST", { summary: resolveSummary.trim() });
     setResolveSummary("");
@@ -1177,6 +1206,8 @@ export default function TicketDetailPage() {
               onAccept={handleAccept}
               onStartWork={handleStartWork}
               onResolve={handleResolve}
+              serviceFeeInr={charges?.service_fee_inr ?? 0}
+              serviceFeeMinInr={charges?.service_fee_min_inr ?? 0}
               onEngineerSign={handleEngineerSign}
               onCustomerSign={handleCustomerSign}
               onGenerateFieldLink={handleGenerateFieldLink}
@@ -1500,7 +1531,9 @@ function ActionPanel(props: {
   onSeverity: (next: string) => void;
   onAccept: () => void;
   onStartWork: () => void;
-  onResolve: () => void;
+  onResolve: (serviceFeeInr: number) => void;
+  serviceFeeInr: number;
+  serviceFeeMinInr: number;
   onEngineerSign: (blob: Blob) => Promise<void> | void;
   onCustomerSign: (blob: Blob, signerName: string) => Promise<void> | void;
   onGenerateFieldLink: () => void | Promise<void>;
@@ -1515,10 +1548,12 @@ function ActionPanel(props: {
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
     onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onThirdPartyInfo, onSeverity,
-    onAccept, onStartWork, onResolve, onEngineerSign, onCustomerSign,
+    onAccept, onStartWork, onResolve, serviceFeeInr, serviceFeeMinInr,
+    onEngineerSign, onCustomerSign,
     onGenerateFieldLink, onDownloadPdf, onRegenPdf,
     defaultPaymentAmount, onCollectPayment,
   } = props;
+  const [resolveFeeDraft, setResolveFeeDraft] = useState("");
   const signPadRef = useRef<SignaturePadHandle>(null);
   const [signEmpty, setSignEmpty] = useState(true);
   // null = show defaultPaymentAmount (the billable total) until the user edits.
@@ -1815,7 +1850,10 @@ function ActionPanel(props: {
               type="button"
               variant="primary"
               size="md"
-              onClick={() => setShowResolveForm(true)}
+              onClick={() => {
+                setResolveFeeDraft(String(serviceFeeInr));
+                setShowResolveForm(true);
+              }}
               className="w-full"
             >
               {isRemote ? "Resolve & close" : "Mark resolved"}
@@ -1831,6 +1869,28 @@ function ActionPanel(props: {
                 onChange={(e) => setResolveSummary(e.target.value)}
                 className="min-h-[100px]"
               />
+              {/* Confirm the service charge before resolving — this is the
+                  amount billed on the resolution/PDF. Editable here as a final
+                  check; only committed when the engineer presses Confirm. */}
+              <div>
+                <label className="block text-[12.5px] font-medium text-ink">
+                  Service charge (₹)
+                </label>
+                <input
+                  type="number"
+                  min={isAdmin ? 0 : serviceFeeMinInr}
+                  value={resolveFeeDraft}
+                  onChange={(e) => setResolveFeeDraft(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-right text-[13.5px] text-ink
+                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                />
+                {serviceFeeMinInr > 0 && (
+                  <p className="mt-1 text-[12px] text-ink-subtle">
+                    Minimum ₹{serviceFeeMinInr.toLocaleString("en-IN")}
+                    {isAdmin && " · you can set lower"}
+                  </p>
+                )}
+              </div>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -1846,7 +1906,11 @@ function ActionPanel(props: {
                   variant="primary"
                   size="md"
                   loading={acting === "resolve"}
-                  onClick={onResolve}
+                  onClick={() => {
+                    const floor = isAdmin ? 0 : serviceFeeMinInr;
+                    const fee = Math.max(floor, parseInt(resolveFeeDraft || "0", 10) || 0);
+                    onResolve(fee);
+                  }}
                   className="flex-1"
                 >
                   Confirm
