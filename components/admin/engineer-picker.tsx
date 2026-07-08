@@ -24,14 +24,50 @@ export type Engineer = {
   open_ticket_count?: number;
 };
 
-/** Sort least-busy first, then alphabetically. */
-const byAvailability = (a: Engineer, b: Engineer) =>
-  (a.open_ticket_count ?? 0) - (b.open_ticket_count ?? 0) || a.name.localeCompare(b.name);
+const norm = (s?: string | null) => (s ?? "").trim().toLowerCase();
+
+// Names we never recommend as "available" — real engineers who should sit
+// below the regular assignees so they aren't picked up by default.
+const DEPRIORITIZED_NAMES = ["shivu", "nagaraj"];
+
+/** Sample/test users are prefixed TEST_ (name or username). */
+const isTestUser = (e: Engineer) =>
+  /^test_/.test(norm(e.name)) || /^test_/.test(norm(e.username));
+
+/** Real users we keep out of the "available" recommendations (Shivu, Nagaraj). */
+const isDeprioritized = (e: Engineer) =>
+  DEPRIORITIZED_NAMES.some((n) => norm(e.name).includes(n) || norm(e.username).includes(n));
+
+/**
+ * Recommendation tier — lower sorts first:
+ *   0 = normal engineers (recommended when free)
+ *   1 = deprioritized real users (Shivu, Nagaraj) — shown, but never "available"
+ *   2 = test users (TEST_) — always last
+ */
+const tier = (e: Engineer) => (isTestUser(e) ? 2 : isDeprioritized(e) ? 1 : 0);
+
+/** Only tier-0 engineers are eligible to show as "Recommended · Available". */
+const isRecommendable = (e: Engineer) => tier(e) === 0;
+
+/** Sort by tier first, then least-busy, then alphabetically. */
+const byRecommendation = (a: Engineer, b: Engineer) =>
+  tier(a) - tier(b) ||
+  (a.open_ticket_count ?? 0) - (b.open_ticket_count ?? 0) ||
+  a.name.localeCompare(b.name);
 
 /** Caption shown under an engineer's name describing their current load. */
-function loadCaption(count: number | undefined): { text: string; free: boolean } {
+function loadCaption(
+  count: number | undefined,
+  recommendable: boolean
+): { text: string; free: boolean } {
   const n = count ?? 0;
-  if (n === 0) return { text: "Recommended · Available", free: true };
+  if (n === 0) {
+    // Only tier-0 engineers get the green "Recommended · Available" treatment;
+    // Shivu/Nagaraj and test users show a neutral, un-highlighted caption.
+    return recommendable
+      ? { text: "Recommended · Available", free: true }
+      : { text: "No open jobs", free: false };
+  }
   return { text: `${n} open job${n === 1 ? "" : "s"}`, free: false };
 }
 
@@ -46,8 +82,6 @@ type Props = {
   placeholder?: string;
   disabled?: boolean;
 };
-
-const norm = (s?: string | null) => (s ?? "").trim().toLowerCase();
 
 export function EngineerPicker({
   engineers,
@@ -84,16 +118,17 @@ export function EngineerPicker({
 
   const wanted = norm(matchDistrict);
   // District-matched engineers stay grouped on top; within every group the
-  // least-busy engineers (0 tickets = recommended) are listed first.
+  // least-busy tier-0 engineers (0 tickets = recommended) are listed first,
+  // with Shivu/Nagaraj and TEST_ users sinking to the bottom (see byRecommendation).
   const matched = (wanted ? visible.filter((e) => norm(e.district) === wanted) : [])
     .slice()
-    .sort(byAvailability);
+    .sort(byRecommendation);
   const others = (matched.length > 0
     ? visible.filter((e) => norm(e.district) !== wanted)
     : visible
   )
     .slice()
-    .sort(byAvailability);
+    .sort(byRecommendation);
 
   const renderOption = (e: Engineer) => {
     const isSelected = e.id === selectedId;
@@ -130,7 +165,7 @@ export function EngineerPicker({
                 {e.district ? ` · ${e.district}` : ""}
               </span>
               {(() => {
-                const cap = loadCaption(e.open_ticket_count);
+                const cap = loadCaption(e.open_ticket_count, isRecommendable(e));
                 return (
                   <span
                     className={cn(
