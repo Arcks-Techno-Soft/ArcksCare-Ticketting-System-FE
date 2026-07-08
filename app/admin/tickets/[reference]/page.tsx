@@ -612,6 +612,15 @@ export default function TicketDetailPage() {
       setActionError("Resolution summary must be at least 10 characters.");
       return;
     }
+    // Reject a below-minimum charge instead of silently accepting it — only an
+    // Admin may go below the floor.
+    const minFee = charges?.service_fee_min_inr ?? 0;
+    if (!isAdmin && serviceFeeInr < minFee) {
+      setActionError(
+        `Service charge can't be below ₹${minFee.toLocaleString("en-IN")} for this ticket. Only an Admin can set a lower amount.`
+      );
+      return;
+    }
     // Persist the confirmed service charge first (only if it changed at the
     // confirm step) so the resolution + PDF reflect exactly what was confirmed.
     if (charges && serviceFeeInr !== charges.service_fee_inr) {
@@ -1907,8 +1916,9 @@ function ActionPanel(props: {
                   size="md"
                   loading={acting === "resolve"}
                   onClick={() => {
-                    const floor = isAdmin ? 0 : serviceFeeMinInr;
-                    const fee = Math.max(floor, parseInt(resolveFeeDraft || "0", 10) || 0);
+                    // Pass the entered amount as-is; handleResolve rejects a
+                    // below-minimum value (non-Admin) rather than clamping it.
+                    const fee = parseInt(resolveFeeDraft || "0", 10) || 0;
                     onResolve(fee);
                   }}
                   className="flex-1"
