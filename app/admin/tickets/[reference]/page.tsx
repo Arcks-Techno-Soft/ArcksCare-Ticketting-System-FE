@@ -1232,6 +1232,7 @@ export default function TicketDetailPage() {
                 acting === "service-fee"
               }
               error={spareError}
+              canWaiveBelowMin={isAdmin}
               onAdd={handleSpareAdd}
               onUpdate={handleSpareUpdate}
               onRemove={handleSpareRemove}

@@ -34,6 +34,8 @@ export type ChargesSummary = {
   is_warranty: boolean;
   service_fee_inr: number;
   service_fee_billable_inr: number;
+  // Minimum service fee for this ticket (0 = no floor).
+  service_fee_min_inr: number;
   spares_list_price_total_inr: number;
   spares_billable_total_inr: number;
   grand_total_inr: number;
@@ -44,6 +46,8 @@ type Props = {
   charges: ChargesSummary | null;
   catalog: SpareCatalogItem[];
   canManage: boolean;
+  // When true (Admin / owner) the service fee may be set below the minimum.
+  canWaiveBelowMin?: boolean;
   // Remote-support tickets carry no spare parts — only the service fee shows.
   remote?: boolean;
   busy: boolean;
@@ -58,6 +62,7 @@ export function Spares({
   charges,
   catalog,
   canManage,
+  canWaiveBelowMin = false,
   remote = false,
   busy,
   error,
@@ -265,26 +270,37 @@ export function Spares({
           />
         )}
 
-        {/* Service fee — always shown and editable now (defaults to ₹0). For
-            covered tickets the customer still owes ₹0 (billed-as-free above). */}
+        {/* Service fee — always shown and editable while RESOLVING. Out-of-
+            warranty tickets carry a minimum (Remote ₹600, Site visit ₹800);
+            only an Admin may set below it. */}
         <div className="mt-2 flex items-center justify-between gap-3">
           <span className="text-[13px] text-ink-muted">Service fee</span>
           {canManage ? (
-            <div className="flex items-center gap-2">
-              <span className="text-ink-subtle">₹</span>
-              <input
-                type="number"
-                min={0}
-                value={feeDraft}
-                onChange={(e) => setFeeDraft(e.target.value)}
-                onBlur={() => {
-                  const next = Math.max(0, parseInt(feeDraft || "0", 10));
-                  if (next !== charges.service_fee_inr) onServiceFee(next);
-                  else setFeeDraft(String(charges.service_fee_inr));
-                }}
-                className="w-24 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
-                           focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
-              />
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-ink-subtle">₹</span>
+                <input
+                  type="number"
+                  min={canWaiveBelowMin ? 0 : charges.service_fee_min_inr}
+                  value={feeDraft}
+                  onChange={(e) => setFeeDraft(e.target.value)}
+                  onBlur={() => {
+                    const floor = canWaiveBelowMin ? 0 : charges.service_fee_min_inr;
+                    // Non-Admins are held at the minimum; an Admin can go lower.
+                    const next = Math.max(floor, parseInt(feeDraft || "0", 10));
+                    if (next !== charges.service_fee_inr) onServiceFee(next);
+                    else setFeeDraft(String(charges.service_fee_inr));
+                  }}
+                  className="w-24 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
+                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                />
+              </div>
+              {charges.service_fee_min_inr > 0 && (
+                <span className="text-[11.5px] text-ink-subtle">
+                  Minimum ₹{charges.service_fee_min_inr.toLocaleString("en-IN")}
+                  {canWaiveBelowMin && " · Admin can set lower"}
+                </span>
+              )}
             </div>
           ) : (
             <span className="text-[13.5px] text-ink">
