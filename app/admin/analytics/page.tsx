@@ -94,7 +94,7 @@ export default function AnalyticsPage() {
               Service performance
             </h1>
             <p className="mt-1 text-[13.5px] text-ink-muted">
-              Trends across the last {days} days · totals reflect lifetime data
+              Trends across the last {days} days · open count is a live snapshot
             </p>
           </div>
 
@@ -130,9 +130,9 @@ export default function AnalyticsPage() {
           <>
             {/* KPI cards */}
             <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-              <KpiCard label="Total tickets" value={data.kpis.total_tickets} hint="All time" />
-              <KpiCard label="Currently open" value={data.kpis.open_tickets} hint="Open/Acked/Assigned/Resolving" />
-              <KpiCard label={`Resolved · ${days}d`} value={data.kpis.window_resolved} hint="Within the window" />
+              <KpiCard label={`Tickets · ${days}d`} value={data.kpis.window_tickets} hint="Created within the window" />
+              <KpiCard label="Currently open" value={data.kpis.open_tickets} hint="Live · Open/Acked/Assigned/Resolving" />
+              <KpiCard label={`Resolved · ${days}d`} value={data.kpis.window_resolved} hint="Of tickets created in window" />
               <KpiCard
                 label="Avg resolution"
                 value={`${data.kpis.avg_resolution_hours.toFixed(1)} h`}
@@ -146,7 +146,7 @@ export default function AnalyticsPage() {
                 <DualLineChart series={data.tickets_per_day} />
               </ChartCard>
 
-              <ChartCard title="Status breakdown" subtitle="All-time">
+              <ChartCard title="Status breakdown" subtitle={`Created · last ${days}d`}>
                 <StatusBars buckets={data.by_status} />
               </ChartCard>
             </div>
@@ -163,7 +163,7 @@ export default function AnalyticsPage() {
 
             {/* Issue + Engineer breakdowns */}
             <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <ChartCard title="Avg resolution time by issue category" subtitle="Hours · all-time">
+              <ChartCard title="Avg resolution time by issue category" subtitle={`Hours · created · last ${days}d`}>
                 <HorizontalBars
                   rows={data.issue_breakdown.map((r) => ({
                     label: r.issue_category,
@@ -174,14 +174,14 @@ export default function AnalyticsPage() {
                 />
               </ChartCard>
 
-              <ChartCard title="Engineer performance" subtitle="Assigned vs. resolved · avg hours">
+              <ChartCard title="Engineer performance" subtitle={`Assigned vs. resolved · avg hours · last ${days}d`}>
                 <EngineerTable rows={data.engineer_performance} />
               </ChartCard>
             </div>
 
             {/* Product mix */}
             <div className="mt-6">
-              <ChartCard title="Tickets by product category" subtitle="Total tickets · avg resolution hours">
+              <ChartCard title="Tickets by product category" subtitle={`Total · avg resolution hours · last ${days}d`}>
                 <ProductTable rows={data.product_breakdown} />
               </ChartCard>
             </div>
