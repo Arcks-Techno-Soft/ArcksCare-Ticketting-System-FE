@@ -54,6 +54,10 @@ export async function submitTicket(
       business_type,
       contact_person_profile_other,
       contact_person_profile,
+      product_category_other,
+      product_category,
+      issue_category_other,
+      issue_category,
       ...rest
     } = values;
     const resolvedType =
@@ -65,10 +69,21 @@ export async function submitTicket(
       contact_person_profile === "Other" && contact_person_profile_other?.trim()
         ? contact_person_profile_other.trim()
         : contact_person_profile;
+    // Same fold for product + issue category: an "Other" pick sends the typed value.
+    const resolvedProduct =
+      product_category === "Other" && product_category_other?.trim()
+        ? product_category_other.trim()
+        : product_category;
+    const resolvedIssue =
+      issue_category === "Other" && issue_category_other?.trim()
+        ? issue_category_other.trim()
+        : issue_category;
     const base = {
       ...rest,
       business_type: resolvedType,
       contact_person_profile: resolvedProfile,
+      product_category: resolvedProduct,
+      issue_category: resolvedIssue,
     };
     // Drop email entirely when blank so the backend stores it as null
     // (an empty string would fail email-format validation).

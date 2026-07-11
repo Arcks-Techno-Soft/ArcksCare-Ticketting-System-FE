@@ -26,6 +26,8 @@ const AddressMap = dynamic(() => import("@/components/address-map"), {
 type FormState = {
   business_name: string;
   business_category: string;
+  // Free-text category, used only when business_category === "Other".
+  business_category_other: string;
   contact_name: string;
   phone: string;
   email: string;
@@ -42,6 +44,7 @@ type FormState = {
 const EMPTY: FormState = {
   business_name: "",
   business_category: "",
+  business_category_other: "",
   contact_name: "",
   phone: "",
   email: "",
@@ -163,6 +166,8 @@ export default function NewInstallationPage() {
 
     if (form.business_name.trim().length < 2) return setError("Business name is required.");
     if (!form.business_category) return setError("Pick a category.");
+    if (form.business_category === "Other" && form.business_category_other.trim().length < 2)
+      return setError("Please specify the business category.");
     if (form.contact_name.trim().length < 2) return setError("Contact name is required.");
     if (form.phone.trim().length < 7) return setError("Phone number is required.");
     if (invoiceMode === "enter" && !form.invoice_number.trim())
@@ -179,7 +184,10 @@ export default function NewInstallationPage() {
 
     const payload: Record<string, unknown> = {
       business_name: form.business_name.trim(),
-      business_category: form.business_category,
+      business_category:
+        form.business_category === "Other" && form.business_category_other.trim()
+          ? form.business_category_other.trim()
+          : form.business_category,
       contact_name: form.contact_name.trim(),
       phone: form.phone.trim(),
       email: form.email.trim() || null,
@@ -317,6 +325,16 @@ export default function NewInstallationPage() {
               value={form.business_category}
               onChange={(e) => update("business_category", e.target.value)}
             />
+            {form.business_category === "Other" && (
+              <Input
+                id="business_category_other"
+                className="mt-2"
+                placeholder="Please specify the business category"
+                aria-label="Specify the business category"
+                value={form.business_category_other}
+                onChange={(e) => update("business_category_other", e.target.value)}
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">

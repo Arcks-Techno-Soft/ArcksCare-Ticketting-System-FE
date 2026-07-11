@@ -63,6 +63,9 @@ export const ticketSchema = z.object({
   product_category: z.enum(PRODUCT_CATEGORIES, {
     errorMap: () => ({ message: "Select a product category" }),
   }),
+  // Free-text category, required only when product_category === "Other". The
+  // submit layer sends this value as the product_category when "Other" is picked.
+  product_category_other: z.string().trim().max(60).optional().or(z.literal("")),
   serial_number: z
     .string()
     .trim()
@@ -71,6 +74,9 @@ export const ticketSchema = z.object({
   issue_category: z.enum(ISSUE_CATEGORIES, {
     errorMap: () => ({ message: "Select an issue category" }),
   }),
+  // Free-text category, required only when issue_category === "Other". The
+  // submit layer sends this value as the issue_category when "Other" is picked.
+  issue_category_other: z.string().trim().max(80).optional().or(z.literal("")),
   // NOTE: severity is intentionally not collected from the customer. The
   // backend defaults it to MEDIUM; Admin/Manager triage and adjust later.
   description: z
@@ -97,6 +103,22 @@ export const ticketSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["contact_person_profile_other"],
       message: "Please specify the contact person's role",
+    });
+  }
+  // An "Other" product category must be typed out.
+  if (val.product_category === "Other" && !val.product_category_other?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["product_category_other"],
+      message: "Please specify the product category",
+    });
+  }
+  // An "Other" issue category must be typed out.
+  if (val.issue_category === "Other" && !val.issue_category_other?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["issue_category_other"],
+      message: "Please specify the issue category",
     });
   }
 });

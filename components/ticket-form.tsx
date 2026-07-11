@@ -383,6 +383,17 @@ export function TicketForm({
               {...register("product_category")}
             />
             <FieldError message={errors.product_category?.message} />
+            {watched.product_category === "Other" && (
+              <div className="mt-2">
+                <Input
+                  id="product_category_other"
+                  placeholder="Please specify the product category"
+                  aria-label="Specify the product category"
+                  {...register("product_category_other")}
+                />
+                <FieldError message={errors.product_category_other?.message} />
+              </div>
+            )}
           </FieldGroup>
 
           <FieldGroup>
@@ -418,6 +429,17 @@ export function TicketForm({
               {...register("issue_category")}
             />
             <FieldError message={errors.issue_category?.message} />
+            {watched.issue_category === "Other" && (
+              <div className="mt-2">
+                <Input
+                  id="issue_category_other"
+                  placeholder="Please specify the issue category"
+                  aria-label="Specify the issue category"
+                  {...register("issue_category_other")}
+                />
+                <FieldError message={errors.issue_category_other?.message} />
+              </div>
+            )}
           </FieldGroup>
 
           <FieldGroup className="md:col-span-2">
