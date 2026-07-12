@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isSuperAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { DashboardViewTabs } from "@/components/admin/dashboard-tabs";
 import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
@@ -69,8 +69,11 @@ type TicketListResponse = {
 export default function AdminTicketsPage() {
   const router = useRouter();
   const { ready, user, authFetch } = useAuth();
-  const isAdmin = user?.role === "ADMIN"; // OWNER is normalized to ADMIN at login
-  // Quick close/delete (Admin/Owner) — actionRef is the row being acted on.
+  // Quick close + quick delete are RESERVED super-admin actions (close from any
+  // status = force-close; delete = soft-delete), so the entire Actions column
+  // is super-admin only.
+  const isSuper = isSuperAdmin(user?.role);
+  // Quick close/delete (Super Admin) — actionRef is the row being acted on.
   const [actionRef, setActionRef] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<"close" | "delete" | null>(null);
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
@@ -404,7 +407,7 @@ export default function AdminTicketsPage() {
                 <Th>Status</Th>
                 <Th>Warranty</Th>
                 <Th>Created</Th>
-                {isAdmin && <Th>Actions</Th>}
+                {isSuper && <Th>Actions</Th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -412,7 +415,7 @@ export default function AdminTicketsPage() {
                 <SkeletonRows />
               ) : tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 9 : 8} className="px-5 py-12 text-center text-ink-subtle">
+                  <td colSpan={isSuper ? 9 : 8} className="px-5 py-12 text-center text-ink-subtle">
                     {error ? error : "No tickets match these filters."}
                   </td>
                 </tr>
@@ -489,7 +492,7 @@ export default function AdminTicketsPage() {
                         {timeAgo(t.created_at)}
                       </span>
                     </Td>
-                    {isAdmin && (
+                    {isSuper && (
                       <Td>
                         <div className="flex items-center gap-3">
                           {t.status !== "CLOSED" && (
@@ -536,7 +539,7 @@ export default function AdminTicketsPage() {
         />
       </section>
 
-      {isAdmin && actionRef && (
+      {isSuper && actionRef && (
         <>
           <CloseTicketDialog
             open={actionMode === "close"}

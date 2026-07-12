@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AdminShell } from "@/components/admin/admin-shell";
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isAdminLevel } from "@/lib/auth";
 import { fmtIstDateShort } from "@/lib/format-date";
 
 type Analytics = {
@@ -57,7 +57,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "ADMIN" && user.role !== "MANAGER") router.replace("/admin/tickets");
+    else if (!isAdminLevel(user.role) && user.role !== "MANAGER") router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   const fetchAnalytics = useCallback(async () => {
@@ -79,10 +79,10 @@ export default function AnalyticsPage() {
   }, [authFetch, days, router]);
 
   useEffect(() => {
-    if (user?.role === "ADMIN" || user?.role === "MANAGER") fetchAnalytics();
+    if (isAdminLevel(user?.role) || user?.role === "MANAGER") fetchAnalytics();
   }, [user, fetchAnalytics]);
 
-  if (!ready || !user || (user.role !== "ADMIN" && user.role !== "MANAGER")) return null;
+  if (!ready || !user || (!isAdminLevel(user.role) && user.role !== "MANAGER")) return null;
 
   return (
     <AdminShell>

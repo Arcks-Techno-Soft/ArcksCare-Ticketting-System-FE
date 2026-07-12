@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isAdminLevel } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
 import { Label, Input, Select } from "@/components/ui/Field";
@@ -359,7 +359,7 @@ export default function InstallationDetailPage() {
     );
   }
 
-  const canModerate = user.role === "ADMIN" || user.role === "MANAGER";
+  const canModerate = isAdminLevel(user.role) || user.role === "MANAGER";
   const isAssignee = inst.assigned_engineer?.id === user.id;
   const canAssign = canModerate && (inst.status === "NEW" || inst.status === "ASSIGNED");
   const canWorkAttempts = (canModerate || isAssignee) && inst.status === "ASSIGNED";

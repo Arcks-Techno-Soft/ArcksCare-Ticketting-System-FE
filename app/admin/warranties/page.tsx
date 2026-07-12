@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isAdminLevel } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Field";
@@ -139,7 +139,7 @@ export default function WarrantyManagementPage() {
   const dupAbort = useRef<AbortController | null>(null);
 
   // Only Admin / Manager may use this section.
-  const allowed = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const allowed = isAdminLevel(user?.role) || user?.role === "MANAGER";
 
   useEffect(() => {
     if (!ready) return;

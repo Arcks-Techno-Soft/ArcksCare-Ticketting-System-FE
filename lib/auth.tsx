@@ -28,14 +28,29 @@ import {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const STORAGE_KEY = "sk-pos-care.auth";
 
+export type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "ENGINEER" | "SALES";
+
 export type AuthUser = {
   id: number;
   username: string;
   name: string;
-  role: "ADMIN" | "MANAGER" | "ENGINEER" | "SALES";
+  role: Role;
   active: boolean;
   email?: string | null;
 };
+
+/**
+ * Role helpers. "OWNER" is a deprecated backend alias for SUPER_ADMIN and is
+ * treated as super-admin everywhere for safety (though logins are normalized
+ * to "SUPER_ADMIN" on the way in — see normalizeAuth).
+ */
+export function isSuperAdmin(role?: string | null): boolean {
+  return role === "SUPER_ADMIN" || role === "OWNER";
+}
+
+export function isAdminLevel(role?: string | null): boolean {
+  return role === "ADMIN" || isSuperAdmin(role);
+}
 
 type LoginResponse = {
   access_token: string;
@@ -62,11 +77,12 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 // Legacy compatibility: the backend still issues role "OWNER" for un-migrated
-// admin accounts. Treat it as ADMIN everywhere in the UI until those accounts
-// are migrated.
+// top-tier accounts. "OWNER" is the deprecated alias for "SUPER_ADMIN"; fold
+// both to "SUPER_ADMIN" so an owner/super-admin is never mistaken for a plain
+// ADMIN (super-admins hold reserved powers plain admins must not have).
 function normalizeAuth(a: StoredAuth | null): StoredAuth | null {
-  if (a?.user && (a.user.role as string) === "OWNER") {
-    return { ...a, user: { ...a.user, role: "ADMIN" } };
+  if (a?.user && ((a.user.role as string) === "OWNER" || (a.user.role as string) === "SUPER_ADMIN")) {
+    return { ...a, user: { ...a.user, role: "SUPER_ADMIN" } };
   }
   return a;
 }

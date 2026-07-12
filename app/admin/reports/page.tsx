@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Download } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isAdminLevel } from "@/lib/auth";
 import { fmtIst } from "@/lib/format-date";
 
 type Breach = {
@@ -95,7 +95,7 @@ export default function ReportsPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "ADMIN" && user.role !== "MANAGER") router.replace("/admin/tickets");
+    else if (!isAdminLevel(user.role) && user.role !== "MANAGER") router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   const fetchReport = useCallback(async () => {
@@ -128,7 +128,7 @@ export default function ReportsPage() {
   }, [authFetch, dateFrom, dateTo, router]);
 
   useEffect(() => {
-    if (user?.role === "ADMIN" || user?.role === "MANAGER") fetchReport();
+    if (isAdminLevel(user?.role) || user?.role === "MANAGER") fetchReport();
   }, [user, fetchReport]);
 
   const stageLabel = useMemo(() => {
@@ -208,7 +208,7 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
-  if (!ready || !user || (user.role !== "ADMIN" && user.role !== "MANAGER")) return null;
+  if (!ready || !user || (!isAdminLevel(user.role) && user.role !== "MANAGER")) return null;
 
   return (
     <AdminShell>

@@ -6,7 +6,7 @@ import { Eye, EyeOff } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Input, Label, Select } from "@/components/ui/Field";
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isSuperAdmin } from "@/lib/auth";
 
 // Mirrors the backend's username validator: 3-50 chars, lowercase alnum
 // plus dot/underscore/hyphen. Client-side check is just for fast feedback —
@@ -22,22 +22,32 @@ type UserRow = {
   last_name?: string | null;
   phone?: string | null;
   email?: string | null;
-  role: "ADMIN" | "MANAGER" | "ENGINEER" | "SALES";
+  role: "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "ENGINEER" | "SALES";
   district?: string | null;
   is_sales_rep?: boolean;
   active: boolean;
 };
 
 const ROLE_LABEL: Record<string, string> = {
+  SUPER_ADMIN: "Super Admin",
+  OWNER: "Super Admin",
   ADMIN: "Admin",
   MANAGER: "Manager",
   ENGINEER: "Engineer",
   SALES: "Sales",
 };
 
-const ROLE_OPTIONS = ["Admin", "Engineer", "Sales"] as const;
-const ROLE_VALUES: Record<(typeof ROLE_OPTIONS)[number], "MANAGER" | "ENGINEER" | "SALES"> = {
-  Admin: "MANAGER",
+// Role codes the backend accepts, in hierarchy order. Used by the create form
+// dropdown and the per-user "change role" control.
+type RoleCode = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "ENGINEER" | "SALES";
+const ROLE_CODES: RoleCode[] = ["SUPER_ADMIN", "ADMIN", "MANAGER", "ENGINEER", "SALES"];
+
+// Create-user dropdown: human labels mapped to the role code sent to the API.
+const ROLE_OPTIONS = ["Super Admin", "Admin", "Manager", "Engineer", "Sales"] as const;
+const ROLE_VALUES: Record<(typeof ROLE_OPTIONS)[number], RoleCode> = {
+  "Super Admin": "SUPER_ADMIN",
+  Admin: "ADMIN",
+  Manager: "MANAGER",
   Engineer: "ENGINEER",
   Sales: "SALES",
 };
@@ -69,10 +79,15 @@ export default function UsersPage() {
   // owner already knows the password they typed in.
   const [flash, setFlash] = useState<string | null>(null);
 
+  // Inline message for the per-user role-change control (e.g. the backend's
+  // 400 "cannot remove your own Super Admin role").
+  const [roleMsg, setRoleMsg] = useState<string | null>(null);
+
+  // User management (create/roles/activation) is a RESERVED super-admin power.
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "ADMIN") router.replace("/admin/tickets");
+    else if (!isSuperAdmin(user.role)) router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   const fetchUsers = useCallback(async () => {
@@ -94,7 +109,7 @@ export default function UsersPage() {
   }, [authFetch, router]);
 
   useEffect(() => {
-    if (user?.role === "ADMIN") fetchUsers();
+    if (isSuperAdmin(user?.role)) fetchUsers();
   }, [user, fetchUsers]);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -189,7 +204,34 @@ export default function UsersPage() {
     if (res.ok) fetchUsers();
   };
 
-  if (!ready || !user || user.role !== "ADMIN") return null;
+  const changeRole = async (u: UserRow, nextRole: string) => {
+    if (nextRole === u.role) return;
+    setRoleMsg(null);
+    const res = await authFetch(`${API_BASE_URL}/api/v1/admin/users/${u.id}/role`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: nextRole }),
+    });
+    if (res.ok) {
+      fetchUsers();
+      return;
+    }
+    // Surface the backend error gracefully — e.g. the 400 raised when a super
+    // admin tries to remove their own Super Admin role.
+    let detail = `Server ${res.status}`;
+    try {
+      const parsed = JSON.parse(await res.text());
+      if (typeof parsed.detail === "string") detail = parsed.detail;
+      else if (Array.isArray(parsed.detail)) {
+        detail = parsed.detail.map((d: { msg?: string }) => d.msg ?? "Invalid input").join("; ");
+      }
+    } catch {}
+    setRoleMsg(detail);
+    // Re-sync so the dropdown snaps back to the user's actual (unchanged) role.
+    fetchUsers();
+  };
+
+  if (!ready || !user || !isSuperAdmin(user.role)) return null;
 
   return (
     <AdminShell>
@@ -202,7 +244,7 @@ export default function UsersPage() {
             Users &amp; roles
           </h1>
           <p className="mt-1 text-[13.5px] text-ink-muted">
-            Admin-only. You choose the username and password — they take effect immediately.
+            Super-admin only. You choose the username and password — they take effect immediately.
           </p>
         </div>
 
@@ -368,6 +410,11 @@ export default function UsersPage() {
         {/* Users table */}
         <div className="mt-10">
           <h2 className="text-[15px] font-medium text-ink">All users</h2>
+          {roleMsg && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-700">
+              {roleMsg}
+            </div>
+          )}
           <div className="mt-4 overflow-x-auto rounded-xl2 border border-line shadow-soft">
             <table className="w-full min-w-[640px] text-left text-[13.5px]">
               <thead className="bg-surface-raised">
@@ -398,7 +445,13 @@ export default function UsersPage() {
                       <Td><span className="font-mono text-[12.5px]">{u.username}</span></Td>
                       <Td>
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center rounded-full border border-line bg-white px-2.5 py-0.5 text-[11.5px]">
+                          <span
+                            className={
+                              isSuperAdmin(u.role)
+                                ? "inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[11.5px] font-medium text-amber-800"
+                                : "inline-flex items-center rounded-full border border-line bg-white px-2.5 py-0.5 text-[11.5px]"
+                            }
+                          >
                             {ROLE_LABEL[u.role] ?? u.role}
                           </span>
                           {u.is_sales_rep && u.role !== "SALES" && (
@@ -423,8 +476,24 @@ export default function UsersPage() {
                         )}
                       </Td>
                       <Td>
-                        <div className="flex flex-wrap gap-1.5">
-                          {user.id !== u.id && u.role !== "ADMIN" && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* Change role — super-admin only. Own row is locked so
+                              a super admin can't demote themselves (also enforced
+                              server-side with a 400). */}
+                          <select
+                            aria-label={`Change role for ${u.name}`}
+                            value={u.role}
+                            disabled={user.id === u.id}
+                            onChange={(e) => changeRole(u, e.target.value)}
+                            className="rounded-md border border-line bg-white px-2 py-1 text-[12px] text-ink hover:border-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {ROLE_CODES.map((r) => (
+                              <option key={r} value={r}>
+                                {ROLE_LABEL[r]}
+                              </option>
+                            ))}
+                          </select>
+                          {user.id !== u.id && !isSuperAdmin(u.role) && (
                             <button
                               type="button"
                               onClick={() => toggleActive(u)}

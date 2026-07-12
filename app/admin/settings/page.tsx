@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Users, Wrench, ChevronRight } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
-import { useAuth } from "@/lib/auth";
+import { useAuth, isAdminLevel, isSuperAdmin } from "@/lib/auth";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -15,10 +15,10 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "ADMIN") router.replace("/admin/tickets");
+    else if (!isAdminLevel(user.role)) router.replace("/admin/tickets");
   }, [ready, user, router]);
 
-  if (!ready || !user || user.role !== "ADMIN") return null;
+  if (!ready || !user || !isAdminLevel(user.role)) return null;
 
   return (
     <AdminShell>
@@ -34,12 +34,16 @@ export default function SettingsPage() {
         </div>
 
         <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <SettingsTile
-            href="/admin/settings/users"
-            title="Users & roles"
-            description="Create new staff accounts, manage roles, deactivate access."
-            icon={<Users size={20} />}
-          />
+          {/* User management (create/roles/activation) is a RESERVED super-admin
+              power — hide the tile from plain admins. */}
+          {isSuperAdmin(user.role) && (
+            <SettingsTile
+              href="/admin/settings/users"
+              title="Users & roles"
+              description="Create new staff accounts, manage roles, deactivate access."
+              icon={<Users size={20} />}
+            />
+          )}
           <SettingsTile
             href="/admin/settings/sub-engineers"
             title="Sub-engineer roster"

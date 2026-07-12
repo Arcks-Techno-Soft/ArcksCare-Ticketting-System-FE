@@ -22,6 +22,8 @@ import { useAuth } from "@/lib/auth";
 import { BrandMark } from "@/components/brand-mark";
 
 const ROLE_LABEL: Record<string, string> = {
+  SUPER_ADMIN: "Super Admin",
+  OWNER: "Super Admin",
   ADMIN: "Admin",
   MANAGER: "Manager",
   ENGINEER: "Engineer",
@@ -62,19 +64,19 @@ const NAV_ITEMS: NavItem[] = [
     label: "New Installation",
     href: "/admin/installations/new",
     icon: Wrench,
-    roles: ["ADMIN", "MANAGER", "ENGINEER", "SALES"],
+    roles: ["SUPER_ADMIN", "ADMIN", "MANAGER", "ENGINEER", "SALES"],
     matchPrefix: "/admin/installations/new",
   },
   {
     label: "Warranty Management",
     href: "/admin/warranties",
     icon: ShieldCheck,
-    roles: ["ADMIN", "MANAGER"],
+    roles: ["SUPER_ADMIN", "ADMIN", "MANAGER"],
     matchPrefix: "/admin/warranties",
   },
-  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
-  { label: "Reports", href: "/admin/reports", icon: FileBarChart, roles: ["ADMIN", "MANAGER"], matchPrefix: "/admin/reports" },
-  { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["ADMIN"], matchPrefix: "/admin/settings" },
+  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["SUPER_ADMIN", "ADMIN", "MANAGER"] },
+  { label: "Reports", href: "/admin/reports", icon: FileBarChart, roles: ["SUPER_ADMIN", "ADMIN", "MANAGER"], matchPrefix: "/admin/reports" },
+  { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["SUPER_ADMIN", "ADMIN"], matchPrefix: "/admin/settings" },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {

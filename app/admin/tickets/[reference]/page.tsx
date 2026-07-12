@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isAdminLevel, isSuperAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
 import { Button } from "@/components/ui/Button";
@@ -612,12 +612,12 @@ export default function TicketDetailPage() {
       setActionError("Resolution summary must be at least 10 characters.");
       return;
     }
-    // Reject a below-minimum charge instead of silently accepting it — only an
-    // Admin may go below the floor.
+    // Reject a below-minimum charge instead of silently accepting it — only a
+    // Super Admin may go below the floor.
     const minFee = charges?.service_fee_min_inr ?? 0;
-    if (!isAdmin && serviceFeeInr < minFee) {
+    if (!isSuper && serviceFeeInr < minFee) {
       setActionError(
-        `Service charge can't be below ₹${minFee.toLocaleString("en-IN")} for this ticket. Only an Admin can set a lower amount.`
+        `Service charge can't be below ₹${minFee.toLocaleString("en-IN")} for this ticket. Only a Super Admin can set a lower amount.`
       );
       return;
     }
@@ -968,8 +968,12 @@ export default function TicketDetailPage() {
     );
   }
 
-  const canModerate = user.role === "ADMIN" || user.role === "MANAGER";
-  const isAdmin = user.role === "ADMIN";
+  const canModerate = isAdminLevel(user.role) || user.role === "MANAGER";
+  // Admin-level = ADMIN or SUPER_ADMIN (general admin powers).
+  const adminLevel = isAdminLevel(user.role);
+  // Super-admin holds the RESERVED powers: force-close, delete, waive below the
+  // service-fee minimum. Plain ADMINs must NOT have these.
+  const isSuper = isSuperAdmin(user.role);
   // Remote-support tickets need no signatures, PDF, spare parts or shipments.
   const isRemote = ticket.service_type === "REMOTE_SUPPORT";
   // Third-party tickets: no spare parts or shipments (service charge only), and
@@ -1195,7 +1199,8 @@ export default function TicketDetailPage() {
               currentUserId={user.id}
               currentUserRole={user.role}
               canModerate={canModerate}
-              isAdmin={isAdmin}
+              isAdmin={adminLevel}
+              isSuperAdmin={isSuper}
               hasUndeliveredShipments={shipments.some((s) => !s.delivered_at)}
               acting={acting}
               actionError={actionError}
@@ -1230,7 +1235,7 @@ export default function TicketDetailPage() {
                 shipments={shipments}
                 canShip={
                   ticket.status !== "CLOSED" &&
-                  (user.role === "ADMIN" ||
+                  (isAdminLevel(user.role) ||
                     user.role === "MANAGER" ||
                     ticket.assigned_engineer?.id === user.id)
                 }
@@ -1261,7 +1266,7 @@ export default function TicketDetailPage() {
                 // Invoice freezes at RESOLVED — no edits by anyone after that,
                 // since the figures travel into the signed resolution PDF.
                 ticket.status === "RESOLVING" &&
-                (user.role === "ADMIN" ||
+                (isAdminLevel(user.role) ||
                   user.role === "MANAGER" ||
                   ticket.assigned_engineer?.id === user.id)
               }
@@ -1272,7 +1277,7 @@ export default function TicketDetailPage() {
                 acting === "service-fee"
               }
               error={spareError}
-              canWaiveBelowMin={isAdmin}
+              canWaiveBelowMin={isSuper}
               onAdd={handleSpareAdd}
               onUpdate={handleSpareUpdate}
               onRemove={handleSpareRemove}
@@ -1281,7 +1286,7 @@ export default function TicketDetailPage() {
             <SubEngineers
               items={ticket.sub_engineers ?? []}
               canManage={
-                (user.role === "ADMIN" || user.role === "MANAGER" || ticket.assigned_engineer?.id === user.id) &&
+                (isAdminLevel(user.role) || user.role === "MANAGER" || ticket.assigned_engineer?.id === user.id) &&
                 ticket.status !== "OPEN"
               }
               defaultLocation={ticket.city}
@@ -1307,11 +1312,11 @@ export default function TicketDetailPage() {
                 error={coEngError}
               />
             )}
-            {/* Owner/Admin-only overrides. */}
-            {isAdmin && (
+            {/* Super-admin-only overrides (force-close + soft-delete). */}
+            {isSuper && (
               <div className="rounded-xl2 border border-red-200 bg-red-50/40 p-5">
                 <p className="text-[11px] uppercase tracking-[0.16em] text-red-600">
-                  Owner / Admin controls
+                  Super Admin controls
                 </p>
                 <div className="mt-3 space-y-2">
                   {ticket.status !== "CLOSED" && (
@@ -1518,6 +1523,7 @@ function ActionPanel(props: {
   currentUserRole: string;
   canModerate: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   hasUndeliveredShipments: boolean;
   acting: string | null;
   actionError: string | null;
@@ -1553,6 +1559,7 @@ function ActionPanel(props: {
 }) {
   const {
     ticket, engineers, currentUserId, currentUserRole, canModerate, isAdmin,
+    isSuperAdmin,
     hasUndeliveredShipments,
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
@@ -1887,7 +1894,7 @@ function ActionPanel(props: {
                 </label>
                 <input
                   type="number"
-                  min={isAdmin ? 0 : serviceFeeMinInr}
+                  min={isSuperAdmin ? 0 : serviceFeeMinInr}
                   value={resolveFeeDraft}
                   onChange={(e) => setResolveFeeDraft(e.target.value)}
                   className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-right text-[13.5px] text-ink
@@ -1896,7 +1903,7 @@ function ActionPanel(props: {
                 {serviceFeeMinInr > 0 && (
                   <p className="mt-1 text-[12px] text-ink-subtle">
                     Minimum ₹{serviceFeeMinInr.toLocaleString("en-IN")}
-                    {isAdmin && " · you can set lower"}
+                    {isSuperAdmin && " · you can set lower"}
                   </p>
                 )}
               </div>

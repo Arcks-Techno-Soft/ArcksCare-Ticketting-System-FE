@@ -5,7 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isAdminLevel } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Field";
@@ -93,7 +93,7 @@ export default function NewInstallationPage() {
 
   // Engineers can open installations but not pre-assign them — their
   // installation lands in the admin queue tagged "Opened by <name>".
-  const canAssign = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const canAssign = isAdminLevel(user?.role) || user?.role === "MANAGER";
 
   useEffect(() => {
     if (!user) return;

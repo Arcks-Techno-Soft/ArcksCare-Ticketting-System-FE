@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Input, Label } from "@/components/ui/Field";
-import { useAuth, API_BASE_URL } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isAdminLevel } from "@/lib/auth";
 
 type RosterRow = {
   id: number;
@@ -35,7 +35,7 @@ export default function SubEngineerRosterPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (user.role !== "ADMIN") router.replace("/admin/tickets");
+    else if (!isAdminLevel(user.role)) router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   const fetchRoster = useCallback(async () => {
@@ -59,7 +59,7 @@ export default function SubEngineerRosterPage() {
   }, [authFetch, router]);
 
   useEffect(() => {
-    if (user?.role === "ADMIN") fetchRoster();
+    if (isAdminLevel(user?.role)) fetchRoster();
   }, [user, fetchRoster]);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -126,7 +126,7 @@ export default function SubEngineerRosterPage() {
     }
   };
 
-  if (!ready || !user || user.role !== "ADMIN") return null;
+  if (!ready || !user || !isAdminLevel(user.role)) return null;
 
   return (
     <AdminShell>
