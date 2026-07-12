@@ -38,13 +38,20 @@ const isTestUser = (e: Engineer) =>
 const isDeprioritized = (e: Engineer) =>
   DEPRIORITIZED_NAMES.some((n) => norm(e.name).includes(n) || norm(e.username).includes(n));
 
+/** Managers can be assigned (they sometimes work jobs themselves) but are a
+ *  fallback, not the default pick — they sink below engineers and are never
+ *  shown as "recommended". */
+const isManager = (e: Engineer) => norm(e.role) === "manager";
+
 /**
  * Recommendation tier — lower sorts first:
- *   0 = normal engineers (recommended when free)
+ *   0 = normal engineers / sales reps (recommended when free)
  *   1 = deprioritized real users (Shivu, Nagaraj) — shown, but never "available"
- *   2 = test users (TEST_) — always last
+ *   2 = managers — assignable, but sink below engineers and never "recommended"
+ *   3 = test users (TEST_) — always last
  */
-const tier = (e: Engineer) => (isTestUser(e) ? 2 : isDeprioritized(e) ? 1 : 0);
+const tier = (e: Engineer) =>
+  isTestUser(e) ? 3 : isManager(e) ? 2 : isDeprioritized(e) ? 1 : 0;
 
 /** Only tier-0 engineers are eligible to show as "Recommended · Available". */
 const isRecommendable = (e: Engineer) => tier(e) === 0;
@@ -157,6 +164,11 @@ export function EngineerPicker({
                 {e.role === "SALES" && (
                   <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">
                     Sales rep
+                  </span>
+                )}
+                {e.role === "MANAGER" && (
+                  <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-700">
+                    Manager
                   </span>
                 )}
               </span>
