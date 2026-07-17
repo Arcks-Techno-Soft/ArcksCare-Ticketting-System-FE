@@ -1263,12 +1263,25 @@ export default function TicketDetailPage() {
               catalog={spareCatalog}
               remote={isRemote || isThirdParty}
               canManage={
-                // Invoice freezes at RESOLVED — no edits by anyone after that,
-                // since the figures travel into the signed resolution PDF.
-                ticket.status === "RESOLVING" &&
-                (isAdminLevel(user.role) ||
-                  user.role === "MANAGER" ||
-                  ticket.assigned_engineer?.id === user.id)
+                // Spares freeze at RESOLVED for non-super-admins — the figures
+                // travel into the signed resolution PDF. A Super Admin may
+                // correct them at any status, including after the ticket is
+                // CLOSED (a post-close billing correction); the PDF re-renders.
+                isSuper ||
+                (ticket.status === "RESOLVING" &&
+                  (isAdminLevel(user.role) ||
+                    user.role === "MANAGER" ||
+                    ticket.assigned_engineer?.id === user.id))
+              }
+              canEditFee={
+                // A Super Admin may correct the service charge (incl. below the
+                // OOW minimum) at any status, including after CLOSED. Everyone
+                // else is held to the RESOLVING window.
+                isSuper ||
+                (ticket.status === "RESOLVING" &&
+                  (isAdminLevel(user.role) ||
+                    user.role === "MANAGER" ||
+                    ticket.assigned_engineer?.id === user.id))
               }
               busy={
                 acting === "spare-add" ||
