@@ -46,7 +46,11 @@ type Props = {
   charges: ChargesSummary | null;
   catalog: SpareCatalogItem[];
   canManage: boolean;
-  // When true (Admin / owner) the service fee may be set below the minimum.
+  // Gates the service-fee input specifically. A Super Admin may edit the
+  // charge at any status (including CLOSED); everyone else is held to the
+  // RESOLVING window, same as the spares. Defaults to `canManage` when omitted.
+  canEditFee?: boolean;
+  // When true (Super Admin) the service fee may be set below the minimum.
   canWaiveBelowMin?: boolean;
   // Remote-support tickets carry no spare parts — only the service fee shows.
   remote?: boolean;
@@ -62,6 +66,7 @@ export function Spares({
   charges,
   catalog,
   canManage,
+  canEditFee,
   canWaiveBelowMin = false,
   remote = false,
   busy,
@@ -113,6 +118,9 @@ export function Spares({
   }
 
   const isWarranty = charges.is_warranty;
+  // Service fee has its own gate (Super Admins can edit past RESOLVED); the
+  // rest of the card (spares) stays on `canManage`.
+  const feeEditable = canEditFee ?? canManage;
 
   return (
     <div className="rounded-xl2 border border-line bg-white shadow-soft">
@@ -275,7 +283,7 @@ export function Spares({
             only an Admin may set below it. */}
         <div className="mt-2 flex items-center justify-between gap-3">
           <span className="text-[13px] text-ink-muted">Service fee</span>
-          {canManage ? (
+          {feeEditable ? (
             <div className="flex flex-col items-end gap-1">
               <div className="flex items-center gap-2">
                 <span className="text-ink-subtle">₹</span>
