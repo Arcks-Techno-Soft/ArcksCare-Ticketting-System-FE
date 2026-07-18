@@ -13,6 +13,12 @@ import { Label, Input, Select } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { AttemptsBlock, type AttemptView } from "@/components/admin/attempts-block";
+import {
+  SubEngineers,
+  type SubEngineer,
+  type RosterContact,
+  type AddSubEngineerInput,
+} from "@/components/admin/sub-engineers";
 import { INDIAN_STATES } from "@/lib/options";
 import type { LocationPayload } from "@/components/address-map";
 import { fmtIst } from "@/lib/format-date";
@@ -66,8 +72,10 @@ type Installation = {
     engineer_signed_at?: string | null;
     pdf_generated_at?: string | null;
     customer_sign_token: string;
+    field_sign_link_generated_at?: string | null;
   } | null;
   attempts?: AttemptView[];
+  sub_engineers?: SubEngineer[];
 };
 
 
@@ -105,6 +113,11 @@ export default function InstallationDetailPage() {
   const [selectedSalesRepId, setSelectedSalesRepId] = useState<number | null>(null);
   const [editingInvoice, setEditingInvoice] = useState(false);
   const [invoiceDraft, setInvoiceDraft] = useState("");
+  // Off-field sub-engineers: the district roster feeds the "add" picker.
+  const [roster, setRoster] = useState<RosterContact[]>([]);
+  const [rosterLoading, setRosterLoading] = useState(true);
+  const [subError, setSubError] = useState<string | null>(null);
+  const [fieldLinkUrl, setFieldLinkUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (ready && !user) router.replace("/admin/login");
@@ -113,11 +126,14 @@ export default function InstallationDetailPage() {
   const fetchAll = useCallback(async () => {
     if (!reference) return;
     try {
-      const [i, e, eng, reps] = await Promise.all([
+      const [i, e, eng, reps, s] = await Promise.all([
         authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}`),
         authFetch(`${API_BASE_URL}/api/v1/admin/installations/${reference}/events`),
         authFetch(`${API_BASE_URL}/api/v1/admin/engineers?include_sales_reps=true`),
         authFetch(`${API_BASE_URL}/api/v1/admin/sales-reps`),
+        authFetch(
+          `${API_BASE_URL}/api/v1/admin/installations/${reference}/sub-engineer-suggestions`
+        ),
       ]);
       if (i.status === 404) {
         setInst(null);
@@ -130,12 +146,15 @@ export default function InstallationDetailPage() {
       setEvents(e.ok ? await e.json() : []);
       setEngineers(eng.ok ? await eng.json() : []);
       setSalesReps(reps.ok ? await reps.json() : []);
+      setRoster(s.ok ? await s.json() : []);
+      setRosterLoading(false);
       // Reflect the currently-credited rep in the picker.
       setSelectedSalesRepId(instData.sales_rep?.id ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Load failed");
     } finally {
       setLoading(false);
+      setRosterLoading(false);
     }
   }, [reference, authFetch]);
 
@@ -178,6 +197,108 @@ export default function InstallationDetailPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
       return false;
+    } finally {
+      setActing(null);
+    }
+  };
+
+  // --- off-field sub-engineers ---------------------------------------- //
+
+  const handleAddSubEngineer = async (input: AddSubEngineerInput) => {
+    setSubError(null);
+    setActing("sub-add");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/installations/${reference}/sub-engineers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try {
+          const j = JSON.parse(t);
+          msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+        } catch {
+          msg = t.slice(0, 200);
+        }
+        throw new Error(msg);
+      }
+      await fetchAll();
+    } catch (e) {
+      setSubError(e instanceof Error ? e.message : "Could not add sub-engineer");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleRemoveSubEngineer = async (id: number) => {
+    setSubError(null);
+    setActing("sub-remove");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/installations/${reference}/sub-engineers/${id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok && res.status !== 204) throw new Error(`${res.status}`);
+      await fetchAll();
+    } catch (e) {
+      setSubError(e instanceof Error ? e.message : "Could not remove sub-engineer");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleSetSubEngineerFee = async (id: number, fee: number) => {
+    setSubError(null);
+    setActing("sub-fee");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/installations/${reference}/sub-engineers/${id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fee_inr: fee }),
+        }
+      );
+      if (!res.ok) throw new Error(`${res.status}`);
+      await fetchAll();
+    } catch (e) {
+      setSubError(e instanceof Error ? e.message : "Could not record the fee");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleGenerateFieldLink = async () => {
+    setError(null);
+    setActing("field-link");
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/installations/${reference}/field-sign-link`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        let msg = `${res.status}`;
+        try {
+          const j = JSON.parse(t);
+          msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+        } catch {
+          msg = t.slice(0, 200);
+        }
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      // The API returns an absolute URL built from the backend's configured
+      // base; rebuild from the token so the link always points at this origin.
+      setFieldLinkUrl(`${window.location.origin}/field-sign-install/${data.token}`);
+      await fetchAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not generate the link");
     } finally {
       setActing(null);
     }
@@ -381,6 +502,27 @@ export default function InstallationDetailPage() {
   // Invoice is editable by the assignee / Admin / Manager until the
   // installation is CLOSED (after which it's frozen into the signed PDF).
   const canEditInvoice = (canModerate || isAssignee) && inst.status !== "CLOSED";
+  // Off-field sub-engineers: manageable by the assignee / Admin / Manager
+  // until the installation closes. Fees stay editable to the end since the
+  // figure is often known only after the work is done.
+  const canManageSubEngineers = (canModerate || isAssignee) && inst.status !== "CLOSED";
+  // The off-field signing link needs a resolution (created when the engineer
+  // marks the installation complete) and at least one sub-engineer to sign.
+  const hasSubEngineer = (inst.sub_engineers?.length ?? 0) > 0;
+  const fieldMode = !!inst.resolution?.field_sign_link_generated_at;
+  const canGenerateFieldLink =
+    (canModerate || isAssignee) &&
+    inst.status === "COMPLETED" &&
+    hasSubEngineer &&
+    !customerSigned &&
+    !engineerSigned;
+  // Once generated, rebuild the shareable URL from the token so it always
+  // points at this origin.
+  const fieldSignUrl =
+    fieldLinkUrl ??
+    (fieldMode && inst.resolution?.customer_sign_token
+      ? `${typeof window !== "undefined" ? window.location.origin : ""}/field-sign-install/${inst.resolution.customer_sign_token}`
+      : null);
 
   const startEditInvoice = () => {
     setInvoiceDraft(inst.invoice_number);
@@ -646,6 +788,23 @@ export default function InstallationDetailPage() {
               onAddNote={handleAttemptNote}
             />
 
+            <SubEngineers
+              items={inst.sub_engineers ?? []}
+              canManage={canManageSubEngineers}
+              defaultLocation={inst.city ?? ""}
+              busy={
+                acting === "sub-add" ||
+                acting === "sub-remove" ||
+                acting === "sub-fee"
+              }
+              roster={roster}
+              rosterLoading={rosterLoading}
+              onAdd={handleAddSubEngineer}
+              onRemove={handleRemoveSubEngineer}
+              onSetFee={handleSetSubEngineerFee}
+              error={subError}
+            />
+
             <Timeline events={events} />
           </div>
 
@@ -816,7 +975,43 @@ export default function InstallationDetailPage() {
                 </div>
               )}
 
-              {canCaptureCustomer && (
+              {/* Off-field signing — generate a link to send the sub-engineer,
+                  who captures both signatures and installation photos on site. */}
+              {canGenerateFieldLink && !fieldMode && (
+                <div className="mt-5 border-t border-line pt-5">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+                    Off-field signing
+                  </p>
+                  <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
+                    Can&apos;t be on site? Generate a link and send it to the
+                    sub-engineer — they capture the customer&apos;s signature,
+                    their own, and photos of the finished installation.
+                  </p>
+                  <Button
+                    className="mt-3 w-full"
+                    variant="outline"
+                    loading={acting === "field-link"}
+                    onClick={handleGenerateFieldLink}
+                  >
+                    Generate sub-engineer signing link
+                  </Button>
+                </div>
+              )}
+
+              {fieldMode && !engineerSigned && fieldSignUrl && (
+                <div className="mt-5 border-t border-line pt-5">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+                    Sub-engineer signing link
+                  </p>
+                  <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
+                    Send this to the sub-engineer. On-site signing here is paused
+                    until they submit.
+                  </p>
+                  <CopyableLink url={fieldSignUrl} />
+                </div>
+              )}
+
+              {canCaptureCustomer && !fieldMode && (
                 <CustomerSignBox
                   defaultName={inst.contact_name}
                   busy={acting === "customer-sign"}
@@ -824,7 +1019,7 @@ export default function InstallationDetailPage() {
                 />
               )}
 
-              {canEngineerSign && (
+              {canEngineerSign && !fieldMode && (
                 <EngineerSignBox
                   busy={acting === "engineer-sign"}
                   onSubmit={handleEngineerSign}
@@ -1225,4 +1420,34 @@ function labelForEvent(e: InstallEvent): string {
     case "CLOSED": return "Closed";
     default: return e.event_type;
   }
+}
+
+function CopyableLink({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable — the user can still select the text manually.
+    }
+  };
+  return (
+    <div className="mt-3 flex items-stretch gap-2">
+      <input
+        readOnly
+        value={url}
+        onFocus={(e) => e.currentTarget.select()}
+        className="min-w-0 flex-1 rounded-xl2 border border-line bg-surface-raised px-3 py-2 font-mono text-[12px] text-ink"
+      />
+      <button
+        type="button"
+        onClick={copy}
+        className="shrink-0 rounded-xl2 border border-line bg-white px-3 py-2 text-[12.5px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface-raised"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
 }
