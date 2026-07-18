@@ -508,30 +508,47 @@ export default function TicketDetailPage() {
     }
   };
 
-  const handleSpareUpdate = async (
-    id: number,
-    input: { unit_price_inr?: number; quantity?: number }
-  ) => {
+  // Persist all pending in-place charge edits in one shot: the service fee (if
+  // changed) then each changed spare line, followed by a single charges refresh.
+  // Called only when the user presses Submit in the Spares card — nothing auto-
+  // saves. On any failure we stop and surface the error; the card keeps the
+  // drafts so the user can retry.
+  const handleSubmitCharges = async (changes: {
+    serviceFeeInr?: number;
+    spares: { id: number; unit_price_inr?: number; quantity?: number }[];
+  }) => {
+    const readErr = async (res: Response) => {
+      const t = await res.text();
+      try { return JSON.parse(t).detail ?? `${res.status}`; } catch { return t.slice(0, 200) || `${res.status}`; }
+    };
     setSpareError(null);
-    setActing("spare-update");
+    setActing("charges-submit");
     try {
-      const res = await authFetch(
-        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/spares/${id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
-        }
-      );
-      if (!res.ok) {
-        const t = await res.text();
-        let msg = `${res.status}`;
-        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
-        throw new Error(msg);
+      if (changes.serviceFeeInr !== undefined) {
+        const res = await authFetch(
+          `${API_BASE_URL}/api/v1/admin/tickets/${reference}/service-fee`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ service_fee_inr: changes.serviceFeeInr }),
+          }
+        );
+        if (!res.ok) throw new Error(await readErr(res));
+      }
+      for (const s of changes.spares) {
+        const res = await authFetch(
+          `${API_BASE_URL}/api/v1/admin/tickets/${reference}/spares/${s.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quantity: s.quantity, unit_price_inr: s.unit_price_inr }),
+          }
+        );
+        if (!res.ok) throw new Error(await readErr(res));
       }
       await refreshCharges();
     } catch (e) {
-      setSpareError(e instanceof Error ? e.message : "Failed to update spare");
+      setSpareError(e instanceof Error ? e.message : "Failed to save charges");
     } finally {
       setActing(null);
     }
@@ -554,32 +571,6 @@ export default function TicketDetailPage() {
       await refreshCharges();
     } catch (e) {
       setSpareError(e instanceof Error ? e.message : "Failed to remove spare");
-    } finally {
-      setActing(null);
-    }
-  };
-
-  const handleServiceFee = async (amount: number) => {
-    setSpareError(null);
-    setActing("service-fee");
-    try {
-      const res = await authFetch(
-        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/service-fee`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ service_fee_inr: amount }),
-        }
-      );
-      if (!res.ok) {
-        const t = await res.text();
-        let msg = `${res.status}`;
-        try { msg = JSON.parse(t).detail ?? msg; } catch { msg = t.slice(0, 200); }
-        throw new Error(msg);
-      }
-      setCharges((await res.json()) as ChargesSummary);
-    } catch (e) {
-      setSpareError(e instanceof Error ? e.message : "Failed to update service fee");
     } finally {
       setActing(null);
     }
@@ -1285,16 +1276,14 @@ export default function TicketDetailPage() {
               }
               busy={
                 acting === "spare-add" ||
-                acting === "spare-update" ||
                 acting === "spare-remove" ||
-                acting === "service-fee"
+                acting === "charges-submit"
               }
               error={spareError}
               canWaiveBelowMin={isSuper}
               onAdd={handleSpareAdd}
-              onUpdate={handleSpareUpdate}
               onRemove={handleSpareRemove}
-              onServiceFee={handleServiceFee}
+              onSubmitCharges={handleSubmitCharges}
             />
             <SubEngineers
               items={ticket.sub_engineers ?? []}
