@@ -57,10 +57,18 @@ type Props = {
   busy: boolean;
   error: string | null;
   onAdd: (input: { catalog_id?: number; name?: string; unit_price_inr?: number; quantity: number }) => Promise<void> | void;
-  onUpdate: (id: number, input: { unit_price_inr?: number; quantity?: number }) => Promise<void> | void;
   onRemove: (id: number) => Promise<void> | void;
-  onServiceFee: (amount: number) => Promise<void> | void;
+  // Persist all pending in-place edits (service fee + changed spare qty/price) in
+  // one shot. Called only when the user presses Submit — nothing auto-saves.
+  onSubmitCharges: (changes: {
+    serviceFeeInr?: number;
+    spares: { id: number; unit_price_inr?: number; quantity?: number }[];
+  }) => Promise<void> | void;
 };
+
+// A single spare's editable draft (kept as strings so the inputs stay controlled
+// while the user is mid-type; normalised to numbers on submit).
+type SpareDraft = { qty: string; price: string };
 
 export function Spares({
   charges,
@@ -72,9 +80,8 @@ export function Spares({
   busy,
   error,
   onAdd,
-  onUpdate,
   onRemove,
-  onServiceFee,
+  onSubmitCharges,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [pickedId, setPickedId] = useState<string>("");
@@ -82,11 +89,35 @@ export function Spares({
   const [feeDraft, setFeeDraft] = useState<string>(
     charges ? String(charges.service_fee_inr) : "0"
   );
+  // Per-spare drafts keyed by item id. Edits (fee + these) accumulate locally and
+  // only persist when the user presses Submit — nothing auto-saves on blur.
+  const [spareDrafts, setSpareDrafts] = useState<Record<number, SpareDraft>>({});
 
-  // Keep the fee draft in sync if the parent reloads with a new value.
+  // Reset every draft to the saved values. Also the effect that keeps drafts in
+  // sync when the parent reloads fresh charges (e.g. after a successful submit).
+  const resetDrafts = () => {
+    if (!charges) return;
+    setFeeDraft(String(charges.service_fee_inr));
+    setSpareDrafts(
+      Object.fromEntries(
+        charges.items.map((it) => [
+          it.id,
+          { qty: String(it.quantity), price: String(it.unit_price_inr) },
+        ])
+      )
+    );
+  };
+
+  // Keep drafts in sync whenever the saved figures change (parent reload). Keyed
+  // on the fee + a fingerprint of the line items so an edit elsewhere on the page
+  // doesn't clobber an in-progress edit here unless the underlying data changed.
+  const itemsFingerprint = charges
+    ? charges.items.map((it) => `${it.id}:${it.quantity}:${it.unit_price_inr}`).join("|")
+    : "";
   useEffect(() => {
-    if (charges) setFeeDraft(String(charges.service_fee_inr));
-  }, [charges?.service_fee_inr]);
+    resetDrafts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charges?.service_fee_inr, itemsFingerprint]);
 
   const pickedCatalog = useMemo(
     () => catalog.find((c) => String(c.id) === pickedId) ?? null,
@@ -122,6 +153,57 @@ export function Spares({
   // rest of the card (spares) stays on `canManage`.
   const feeEditable = canEditFee ?? canManage;
 
+  // --- pending-edit model: normalise drafts, detect changes, submit as a batch --
+
+  // The service fee the draft would resolve to. Non-Admins are clamped to the
+  // minimum; a Super Admin (canWaiveBelowMin) may go all the way to ₹0.
+  const feeFloor = canWaiveBelowMin ? 0 : charges.service_fee_min_inr;
+  const feeNext = Math.max(feeFloor, parseInt(feeDraft || "0", 10) || 0);
+  const feeChanged = feeNext !== charges.service_fee_inr;
+
+  // Spare rows whose qty or unit price differs from the saved value. When a row
+  // has no draft yet (before the sync effect populates it) fall back to the saved
+  // values so the row never reads as "changed" spuriously.
+  const spareChanges = charges.items
+    .map((it) => {
+      const d = spareDrafts[it.id];
+      const qtyNext =
+        d === undefined ? it.quantity : Math.max(1, parseInt(d.qty || "1", 10) || 1);
+      const priceNext =
+        d === undefined ? it.unit_price_inr : Math.max(0, parseInt(d.price || "0", 10) || 0);
+      const changed = qtyNext !== it.quantity || priceNext !== it.unit_price_inr;
+      return { id: it.id, quantity: qtyNext, unit_price_inr: priceNext, changed };
+    })
+    .filter((c) => c.changed);
+
+  const dirty = feeChanged || spareChanges.length > 0;
+
+  const handleSubmit = async () => {
+    if (!dirty) return;
+    await onSubmitCharges({
+      serviceFeeInr: feeChanged ? feeNext : undefined,
+      spares: spareChanges.map(({ id, quantity, unit_price_inr }) => ({
+        id,
+        quantity,
+        unit_price_inr,
+      })),
+    });
+    // Parent reloads charges on success → the sync effect resets the drafts. On
+    // failure the parent surfaces `error` and drafts are kept so the user can retry.
+  };
+
+  const setSpareDraft = (id: number, patch: Partial<SpareDraft>) =>
+    setSpareDrafts((prev) => ({
+      ...prev,
+      [id]: {
+        qty: prev[id]?.qty ?? String(charges.items.find((it) => it.id === id)?.quantity ?? 1),
+        price:
+          prev[id]?.price ??
+          String(charges.items.find((it) => it.id === id)?.unit_price_inr ?? 0),
+        ...patch,
+      },
+    }));
+
   return (
     <div className="rounded-xl2 border border-line bg-white shadow-soft">
       <div className="flex items-center justify-between border-b border-line bg-surface-raised px-5 py-3">
@@ -149,7 +231,10 @@ export function Spares({
                 isWarranty={isWarranty}
                 canManage={canManage}
                 busy={busy}
-                onUpdate={onUpdate}
+                qtyDraft={spareDrafts[it.id]?.qty ?? String(it.quantity)}
+                priceDraft={spareDrafts[it.id]?.price ?? String(it.unit_price_inr)}
+                onQtyChange={(v) => setSpareDraft(it.id, { qty: v })}
+                onPriceChange={(v) => setSpareDraft(it.id, { price: v })}
                 onRemove={onRemove}
               />
             ))
@@ -292,15 +377,9 @@ export function Spares({
                   min={canWaiveBelowMin ? 0 : charges.service_fee_min_inr}
                   value={feeDraft}
                   onChange={(e) => setFeeDraft(e.target.value)}
-                  onBlur={() => {
-                    const floor = canWaiveBelowMin ? 0 : charges.service_fee_min_inr;
-                    // Non-Admins are held at the minimum; an Admin can go lower.
-                    const next = Math.max(floor, parseInt(feeDraft || "0", 10));
-                    if (next !== charges.service_fee_inr) onServiceFee(next);
-                    else setFeeDraft(String(charges.service_fee_inr));
-                  }}
+                  disabled={busy}
                   className="w-24 rounded-md border border-line bg-white px-2 py-1 text-right text-[13.5px] text-ink
-                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10 disabled:opacity-60"
                 />
               </div>
               {charges.service_fee_min_inr > 0 && (
@@ -323,6 +402,37 @@ export function Spares({
             ₹{charges.grand_total_inr.toLocaleString("en-IN")}
           </span>
         </div>
+
+        {/* Unsaved-changes bar — appears once the fee or any spare qty/price has
+            been edited. Nothing persists until the user presses Submit. */}
+        {dirty && (
+          <div className="mt-4 border-t border-line pt-3">
+            <FieldError message={error ?? undefined} />
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[12.5px] text-amber-700">Unsaved changes</span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="md"
+                  disabled={busy}
+                  onClick={resetDrafts}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  loading={busy}
+                  onClick={handleSubmit}
+                >
+                  Submit
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -342,34 +452,24 @@ function SpareRow({
   isWarranty,
   canManage,
   busy,
-  onUpdate,
+  qtyDraft,
+  priceDraft,
+  onQtyChange,
+  onPriceChange,
   onRemove,
 }: {
   item: ChargeLineItem;
   isWarranty: boolean;
   canManage: boolean;
   busy: boolean;
-  onUpdate: (id: number, input: { unit_price_inr?: number; quantity?: number }) => Promise<void> | void;
+  // Controlled drafts owned by the parent Spares component. Edits accumulate
+  // there and only persist when the user presses Submit.
+  qtyDraft: string;
+  priceDraft: string;
+  onQtyChange: (value: string) => void;
+  onPriceChange: (value: string) => void;
   onRemove: (id: number) => Promise<void> | void;
 }) {
-  const [priceDraft, setPriceDraft] = useState(String(item.unit_price_inr));
-  const [qtyDraft, setQtyDraft] = useState(String(item.quantity));
-
-  // Sync drafts when parent re-renders with fresh data.
-  useEffect(() => { setPriceDraft(String(item.unit_price_inr)); }, [item.unit_price_inr]);
-  useEffect(() => { setQtyDraft(String(item.quantity)); }, [item.quantity]);
-
-  const commitPrice = () => {
-    const next = Math.max(0, parseInt(priceDraft || "0", 10));
-    if (next !== item.unit_price_inr) onUpdate(item.id, { unit_price_inr: next });
-    else setPriceDraft(String(item.unit_price_inr));
-  };
-  const commitQty = () => {
-    const next = Math.max(1, parseInt(qtyDraft || "1", 10));
-    if (next !== item.quantity) onUpdate(item.id, { quantity: next });
-    else setQtyDraft(String(item.quantity));
-  };
-
   return (
     <li className="px-5 py-3.5">
       <div className="flex items-start justify-between gap-3">
@@ -383,10 +483,9 @@ function SpareRow({
                   type="number"
                   min={1}
                   value={qtyDraft}
-                  onChange={(e) => setQtyDraft(e.target.value)}
-                  onBlur={commitQty}
+                  onChange={(e) => onQtyChange(e.target.value)}
                   className="w-14 rounded-md border border-line bg-white px-2 py-0.5 text-right text-[13px] text-ink
-                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10 disabled:opacity-60"
                   disabled={busy}
                 />
               ) : (
@@ -402,10 +501,9 @@ function SpareRow({
                   type="number"
                   min={0}
                   value={priceDraft}
-                  onChange={(e) => setPriceDraft(e.target.value)}
-                  onBlur={commitPrice}
+                  onChange={(e) => onPriceChange(e.target.value)}
                   className="w-24 rounded-md border border-line bg-white px-2 py-0.5 text-right text-[13px] text-ink
-                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+                             focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10 disabled:opacity-60"
                   disabled={busy}
                 />
               ) : (
