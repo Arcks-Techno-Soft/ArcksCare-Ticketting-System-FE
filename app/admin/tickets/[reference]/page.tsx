@@ -86,6 +86,9 @@ type AdminTicket = {
   assigned_by?: Engineer | null;
   assigned_engineer?: Engineer | null;
   assigned_at?: string | null;
+  // Sales rep credited with this service call (view-only for the rep). Optional
+  // — not every ticket has one.
+  sales_rep?: Engineer | null;
 
   accepted_at?: string | null;
   resolving_started_at?: string | null;
@@ -178,6 +181,8 @@ export default function TicketDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
+  const [salesReps, setSalesReps] = useState<{ id: number; name: string; username: string }[]>([]);
+  const [selectedSalesRepId, setSelectedSalesRepId] = useState<number | null>(null);
   const [resolveSummary, setResolveSummary] = useState("");
   const [showResolveForm, setShowResolveForm] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
@@ -209,10 +214,11 @@ export default function TicketDetailPage() {
   const fetchAll = useCallback(async () => {
     if (!reference) return;
     try {
-      const [t, e, eng, s, c, sh] = await Promise.all([
+      const [t, e, eng, reps, s, c, sh] = await Promise.all([
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/events`),
         authFetch(`${API_BASE_URL}/api/v1/admin/engineers?include_sales_reps=true`),
+        authFetch(`${API_BASE_URL}/api/v1/admin/sales-reps`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/sub-engineer-suggestions`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/charges`),
         authFetch(`${API_BASE_URL}/api/v1/admin/tickets/${reference}/shipments`),
@@ -256,9 +262,13 @@ export default function TicketDetailPage() {
       setNotFound(false);
       setForbidden(false);
       setLoadError(null);
-      setTicket(await t.json());
+      const ticketData = await t.json();
+      setTicket(ticketData);
       setEvents(e.ok ? await e.json() : []);
       setEngineers(eng.ok ? await eng.json() : []);
+      setSalesReps(reps.ok ? await reps.json() : []);
+      // Reflect the currently-credited rep in the picker.
+      setSelectedSalesRepId(ticketData.sales_rep?.id ?? null);
       setRoster(s.ok ? ((await s.json()) as RosterContact[]) : []);
       setCharges(c.ok ? ((await c.json()) as ChargesSummary) : null);
       setShipments(sh.ok ? ((await sh.json()) as Shipment[]) : []);
@@ -344,6 +354,11 @@ export default function TicketDetailPage() {
   };
 
   const handleSelfAssign = () => callAction("self-assign", "/self-assign");
+
+  // Credit (or clear, via null) the sales rep who sourced this service call.
+  // Optional — Admin/Manager only, editable until the ticket is CLOSED.
+  const handleSetSalesRep = () =>
+    callAction("sales-rep", "/sales-rep", "PATCH", { sales_rep_id: selectedSalesRepId });
 
   const handleAddSubEngineer = async (input: AddSubEngineerInput) => {
     setSubError(null);
@@ -1197,6 +1212,10 @@ export default function TicketDetailPage() {
               actionError={actionError}
               selectedEngineerId={selectedEngineerId}
               setSelectedEngineerId={setSelectedEngineerId}
+              salesReps={salesReps}
+              selectedSalesRepId={selectedSalesRepId}
+              setSelectedSalesRepId={setSelectedSalesRepId}
+              onSetSalesRep={handleSetSalesRep}
               resolveSummary={resolveSummary}
               setResolveSummary={setResolveSummary}
               showResolveForm={showResolveForm}
@@ -1531,6 +1550,10 @@ function ActionPanel(props: {
   actionError: string | null;
   selectedEngineerId: number | null;
   setSelectedEngineerId: (s: number | null) => void;
+  salesReps: { id: number; name: string; username: string }[];
+  selectedSalesRepId: number | null;
+  setSelectedSalesRepId: (s: number | null) => void;
+  onSetSalesRep: () => void;
   resolveSummary: string;
   setResolveSummary: (s: string) => void;
   showResolveForm: boolean;
@@ -1564,6 +1587,7 @@ function ActionPanel(props: {
     isSuperAdmin,
     hasUndeliveredShipments,
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
+    salesReps, selectedSalesRepId, setSelectedSalesRepId, onSetSalesRep,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
     onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onThirdPartyInfo, onSeverity,
     onAccept, onStartWork, onResolve, serviceFeeInr, serviceFeeMinInr,
@@ -1704,10 +1728,13 @@ function ActionPanel(props: {
   const amountCollected = ticket.amount_collected_inr ?? 0;
   const amountPending = ticket.amount_pending_inr ?? Math.max(0, amountDue - amountCollected);
 
+  // Admin/Manager can credit a sales rep on any non-closed ticket — keep the
+  // panel visible for that even when no other action applies.
+  const canCreditSalesRep = canModerate && ticket.status !== "CLOSED";
   const hasAnyAction =
     canAcknowledge || canAssign || isAdmin || canAccept || canStart || canResolve ||
     canCaptureCustomer || canEngineerSign || canGenerateFieldLink || canDownloadPdf ||
-    paymentPending ||
+    paymentPending || canCreditSalesRep ||
     (ticket.status === "RESOLVED" && !!ticket.resolution);
   if (!hasAnyAction) {
     return (
@@ -1812,6 +1839,55 @@ function ActionPanel(props: {
             >
               {acting === "self-assign" ? "Assigning to you…" : "or, assign to me"}
             </button>
+          )}
+        </div>
+      )}
+
+      {/* Sales representative — Admin/Manager credit who sourced the deal.
+          Optional (a ticket need not have one); editable until CLOSED. */}
+      {canCreditSalesRep && (
+        <div className="border-t border-line pt-5">
+          <Label htmlFor="ticket_sales_rep">Sales representative</Label>
+          {ticket.sales_rep && (
+            <div className="mb-2 mt-1 rounded-md border border-line bg-surface-raised px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-ink-subtle">
+                Currently credited
+              </div>
+              <div className="mt-0.5 text-[13.5px] font-medium text-ink">
+                {ticket.sales_rep.name}
+              </div>
+            </div>
+          )}
+          <select
+            id="ticket_sales_rep"
+            value={selectedSalesRepId ?? ""}
+            onChange={(e) =>
+              setSelectedSalesRepId(e.target.value ? Number(e.target.value) : null)
+            }
+            className="mt-1 block w-full rounded-xl2 border border-line bg-white px-4 py-3 text-[14px] text-ink transition-all duration-200 hover:border-line-strong focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+          >
+            <option value="">None</option>
+            {salesReps.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name} (@{r.username})
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            loading={acting === "sales-rep"}
+            disabled={selectedSalesRepId === (ticket.sales_rep?.id ?? null)}
+            onClick={onSetSalesRep}
+            className="mt-3 w-full"
+          >
+            {ticket.sales_rep ? "Update sales rep" : "Set sales rep"}
+          </Button>
+          {salesReps.length === 0 && (
+            <p className="mt-1.5 text-[12px] text-ink-subtle">
+              No sales reps yet — add one under Settings · Users.
+            </p>
           )}
         </div>
       )}
