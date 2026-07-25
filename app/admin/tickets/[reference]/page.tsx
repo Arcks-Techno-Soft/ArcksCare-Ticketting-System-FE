@@ -1,9 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+
+import { INDIAN_STATES } from "@/lib/options";
+import type { LocationPayload } from "@/components/address-map";
+
+// Leaflet touches `window`, so the map must be client-only.
+const AddressMap = dynamic(() => import("@/components/address-map"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[280px] w-full animate-pulse rounded-xl2 border border-line bg-surface-raised" />
+  ),
+});
 
 import { useAuth, API_BASE_URL, isAdminLevel, isSuperAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
@@ -29,7 +41,7 @@ import {
 } from "@/components/admin/spares";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { useRef } from "react";
-import { Label } from "@/components/ui/Field";
+import { Input, Label, Select } from "@/components/ui/Field";
 import { ShipPartsDialog } from "@/components/admin/ship-parts-dialog";
 import { CloseTicketDialog } from "@/components/admin/close-ticket-dialog";
 import { DeleteTicketDialog } from "@/components/admin/delete-ticket-dialog";
@@ -336,8 +348,10 @@ export default function TicketDetailPage() {
         throw new Error(msg);
       }
       await fetchAll();
+      return true;
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Action failed");
+      return false;
     } finally {
       setActing(null);
     }
@@ -980,6 +994,15 @@ export default function TicketDetailPage() {
   // Super-admin holds the RESERVED powers: force-close, delete, waive below the
   // service-fee minimum. Plain ADMINs must NOT have these.
   const isSuper = isSuperAdmin(user.role);
+  // Customer + address stay correctable by Admin/Manager or the assigned
+  // engineer until the ticket is CLOSED (after which the record is signed off).
+  const canEditDetails =
+    (canModerate || ticket.assigned_engineer?.id === user.id) &&
+    ticket.status !== "CLOSED";
+  const saveTicketCustomer = (payload: Record<string, unknown>) =>
+    callAction("customer", "/customer", "PATCH", payload);
+  const saveTicketAddress = (payload: Record<string, unknown>) =>
+    callAction("address", "/address", "PATCH", payload);
   // Remote-support tickets need no signatures, PDF, spare parts or shipments.
   const isRemote = ticket.service_type === "REMOTE_SUPPORT";
   // Third-party tickets: no spare parts or shipments (service charge only), and
@@ -1028,64 +1051,19 @@ export default function TicketDetailPage() {
         <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_360px]">
           {/* LEFT: ticket info */}
           <div className="space-y-10">
-            <DetailBlock title="Customer">
-              <Row label="Business" value={`${ticket.business_name} · ${ticket.business_type}`} />
-              <Row
-                label="Contact"
-                value={
-                  ticket.contact_person_profile
-                    ? `${ticket.contact_name} · ${ticket.contact_person_profile}`
-                    : ticket.contact_name
-                }
-              />
-              <Row label="Phone" value={<a className="hover:underline" href={`tel:${ticket.phone}`}>{ticket.phone}</a>} />
-              <Row label="Email" value={ticket.email ? <a className="hover:underline" href={`mailto:${ticket.email}`}>{ticket.email}</a> : "—"} />
-              {ticket.raised_by ? (
-                <Row
-                  label="Raised by"
-                  value={
-                    <span>
-                      {ticket.raised_by.name}
-                      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-blue-700">
-                        {ticket.raised_by.role === "ENGINEER" ? "Engineer" : ticket.raised_by.role}
-                      </span>
-                    </span>
-                  }
-                />
-              ) : (
-                <Row
-                  label="Raised by"
-                  value={
-                    <span>
-                      Customer — {ticket.contact_name}
-                      {ticket.contact_person_profile ? ` — ${ticket.contact_person_profile}` : ""}
-                    </span>
-                  }
-                />
-              )}
-            </DetailBlock>
+            <CustomerBlock
+              ticket={ticket}
+              canEdit={canEditDetails}
+              busy={acting === "customer"}
+              onSave={saveTicketCustomer}
+            />
 
-            <DetailBlock title="Address">
-              <Row label="Line 1" value={ticket.address_line1} />
-              {ticket.address_line2 && <Row label="Line 2" value={ticket.address_line2} />}
-              {ticket.address_line3 && <Row label="Line 3" value={ticket.address_line3} />}
-              <Row label="City" value={`${ticket.city}, ${ticket.state} — ${ticket.pincode}`} />
-              {typeof ticket.latitude === "number" && typeof ticket.longitude === "number" && (
-                <Row
-                  label="Map pin"
-                  value={
-                    <a
-                      className="hover:underline"
-                      target="_blank"
-                      rel="noreferrer"
-                      href={`https://www.google.com/maps?q=${ticket.latitude},${ticket.longitude}`}
-                    >
-                      {ticket.latitude.toFixed(5)}, {ticket.longitude.toFixed(5)} ↗
-                    </a>
-                  }
-                />
-              )}
-            </DetailBlock>
+            <AddressBlock
+              ticket={ticket}
+              canEdit={canEditDetails}
+              busy={acting === "address"}
+              onSave={saveTicketAddress}
+            />
 
             <DetailBlock title="Product">
               <Row label="Category" value={ticket.product_category} />
@@ -1537,6 +1515,372 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/* Customer / contact details — read-only with an inline edit form. Editable by
+   Admin/Manager or the assigned engineer until the ticket is CLOSED. */
+function CustomerBlock({
+  ticket,
+  canEdit,
+  busy,
+  onSave,
+}: {
+  ticket: AdminTicket;
+  canEdit: boolean;
+  busy: boolean;
+  onSave: (payload: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    business_name: "",
+    business_type: "",
+    contact_name: "",
+    contact_person_profile: "",
+    phone: "",
+    email: "",
+  });
+  const [err, setErr] = useState<string | null>(null);
+
+  const start = () => {
+    setDraft({
+      business_name: ticket.business_name ?? "",
+      business_type: ticket.business_type ?? "",
+      contact_name: ticket.contact_name ?? "",
+      contact_person_profile: ticket.contact_person_profile ?? "",
+      phone: ticket.phone ?? "",
+      email: ticket.email ?? "",
+    });
+    setErr(null);
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setErr(null);
+    if (draft.business_name.trim().length < 2) return setErr("Business name is required.");
+    if (draft.business_type.trim().length < 2) return setErr("Business type is required.");
+    if (draft.contact_name.trim().length < 2) return setErr("Contact name is required.");
+    if (draft.phone.replace(/\D/g, "").replace(/^91/, "").length !== 10)
+      return setErr("Enter a valid 10-digit mobile number.");
+    const ok = await onSave({
+      business_name: draft.business_name.trim(),
+      business_type: draft.business_type.trim(),
+      contact_name: draft.contact_name.trim(),
+      contact_person_profile: draft.contact_person_profile.trim() || null,
+      phone: draft.phone.trim(),
+      email: draft.email.trim() || null,
+    });
+    if (ok) setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <DetailBlock title="Customer">
+        <div className="space-y-4 p-4">
+          <div>
+            <Label htmlFor="tc_business" required>Business name</Label>
+            <Input
+              id="tc_business"
+              value={draft.business_name}
+              onChange={(e) => setDraft((d) => ({ ...d, business_name: e.target.value }))}
+              placeholder="Business name"
+            />
+          </div>
+          <div>
+            <Label htmlFor="tc_type" required>Business type</Label>
+            <Input
+              id="tc_type"
+              value={draft.business_type}
+              onChange={(e) => setDraft((d) => ({ ...d, business_type: e.target.value }))}
+              placeholder="e.g. Restaurant, Retail Store"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="tc_contact" required>Contact name</Label>
+              <Input
+                id="tc_contact"
+                value={draft.contact_name}
+                onChange={(e) => setDraft((d) => ({ ...d, contact_name: e.target.value }))}
+                placeholder="Contact person"
+              />
+            </div>
+            <div>
+              <Label htmlFor="tc_profile">Contact role</Label>
+              <Input
+                id="tc_profile"
+                value={draft.contact_person_profile}
+                onChange={(e) => setDraft((d) => ({ ...d, contact_person_profile: e.target.value }))}
+                placeholder="e.g. Owner, Manager (optional)"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="tc_phone" required>Phone</Label>
+              <Input
+                id="tc_phone"
+                value={draft.phone}
+                onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+                placeholder="10-digit mobile"
+                inputMode="tel"
+              />
+            </div>
+            <div>
+              <Label htmlFor="tc_email">Email</Label>
+              <Input
+                id="tc_email"
+                value={draft.email}
+                onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+                placeholder="Email (optional)"
+                inputMode="email"
+              />
+            </div>
+          </div>
+          {err && <p className="text-[13px] text-red-700">{err}</p>}
+          <div className="flex gap-2">
+            <Button variant="primary" loading={busy} onClick={save}>Save</Button>
+            <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+          </div>
+        </div>
+      </DetailBlock>
+    );
+  }
+
+  return (
+    <DetailBlock title="Customer">
+      <Row label="Business" value={`${ticket.business_name} · ${ticket.business_type}`} />
+      <Row
+        label="Contact"
+        value={
+          ticket.contact_person_profile
+            ? `${ticket.contact_name} · ${ticket.contact_person_profile}`
+            : ticket.contact_name
+        }
+      />
+      <Row label="Phone" value={<a className="hover:underline" href={`tel:${ticket.phone}`}>{ticket.phone}</a>} />
+      <Row label="Email" value={ticket.email ? <a className="hover:underline" href={`mailto:${ticket.email}`}>{ticket.email}</a> : "—"} />
+      {ticket.raised_by ? (
+        <Row
+          label="Raised by"
+          value={
+            <span>
+              {ticket.raised_by.name}
+              <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-blue-700">
+                {ticket.raised_by.role === "ENGINEER" ? "Engineer" : ticket.raised_by.role}
+              </span>
+            </span>
+          }
+        />
+      ) : (
+        <Row
+          label="Raised by"
+          value={
+            <span>
+              Customer — {ticket.contact_name}
+              {ticket.contact_person_profile ? ` — ${ticket.contact_person_profile}` : ""}
+            </span>
+          }
+        />
+      )}
+      {canEdit && (
+        <Row
+          label=""
+          value={
+            <button
+              type="button"
+              onClick={start}
+              className="text-[12.5px] font-medium text-ink underline-offset-2 hover:underline"
+            >
+              Edit customer details
+            </button>
+          }
+        />
+      )}
+    </DetailBlock>
+  );
+}
+
+/* Site address — read-only with an inline edit form + map pin. Same gate. */
+function AddressBlock({
+  ticket,
+  canEdit,
+  busy,
+  onSave,
+}: {
+  ticket: AdminTicket;
+  canEdit: boolean;
+  busy: boolean;
+  onSave: (payload: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    address_line1: "",
+    address_line2: "",
+    address_line3: "",
+    city: "",
+    state: "",
+    pincode: "",
+  });
+  const [geo, setGeo] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null });
+  const [err, setErr] = useState<string | null>(null);
+
+  const start = () => {
+    setDraft({
+      address_line1: ticket.address_line1 ?? "",
+      address_line2: ticket.address_line2 ?? "",
+      address_line3: ticket.address_line3 ?? "",
+      city: ticket.city ?? "",
+      state: ticket.state ?? "",
+      pincode: ticket.pincode ?? "",
+    });
+    setGeo({ lat: ticket.latitude ?? null, lng: ticket.longitude ?? null });
+    setErr(null);
+    setEditing(true);
+  };
+
+  const onLocationChange = (loc: LocationPayload) => {
+    setGeo({ lat: loc.lat, lng: loc.lng });
+    const a = loc.address;
+    setDraft((d) => {
+      const next = { ...d };
+      if (a.line1) next.address_line1 = a.line1;
+      if (a.line2) next.address_line2 = a.line2;
+      if (a.line3) next.address_line3 = a.line3;
+      if (a.city) next.city = a.city;
+      if (a.pincode) next.pincode = a.pincode;
+      if (a.state) {
+        const match = INDIAN_STATES.find((s) => s.toLowerCase() === a.state!.toLowerCase());
+        if (match) next.state = match;
+      }
+      return next;
+    });
+  };
+
+  const save = async () => {
+    setErr(null);
+    if (draft.address_line1.trim().length < 3) return setErr("Address line 1 is required.");
+    if (draft.city.trim().length < 2) return setErr("City is required.");
+    if (!draft.state) return setErr("Select a state.");
+    if (draft.pincode.replace(/\D/g, "").length < 4) return setErr("Enter a valid pincode.");
+    const ok = await onSave({
+      address_line1: draft.address_line1.trim(),
+      address_line2: draft.address_line2.trim() || null,
+      address_line3: draft.address_line3.trim() || null,
+      city: draft.city.trim(),
+      state: draft.state,
+      pincode: draft.pincode.trim(),
+      latitude: geo.lat,
+      longitude: geo.lng,
+    });
+    if (ok) setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <DetailBlock title="Address">
+        <div className="space-y-4 p-4">
+          <div>
+            <Label htmlFor="ta_line1" required>Address line 1</Label>
+            <Input
+              id="ta_line1"
+              value={draft.address_line1}
+              onChange={(e) => setDraft((d) => ({ ...d, address_line1: e.target.value }))}
+              placeholder="Building name, floor, street"
+            />
+          </div>
+          <Input
+            value={draft.address_line2}
+            onChange={(e) => setDraft((d) => ({ ...d, address_line2: e.target.value }))}
+            placeholder="Address line 2 (optional)"
+            aria-label="Address line 2"
+          />
+          <Input
+            value={draft.address_line3}
+            onChange={(e) => setDraft((d) => ({ ...d, address_line3: e.target.value }))}
+            placeholder="Address line 3 (optional)"
+            aria-label="Address line 3"
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Input
+              value={draft.city}
+              onChange={(e) => setDraft((d) => ({ ...d, city: e.target.value }))}
+              placeholder="City"
+              aria-label="City"
+            />
+            <Select
+              options={INDIAN_STATES}
+              placeholder="State"
+              value={draft.state}
+              onChange={(e) => setDraft((d) => ({ ...d, state: e.target.value }))}
+              aria-label="State"
+            />
+            <Input
+              value={draft.pincode}
+              onChange={(e) => setDraft((d) => ({ ...d, pincode: e.target.value }))}
+              placeholder="Pincode"
+              inputMode="numeric"
+              aria-label="Pincode"
+            />
+          </div>
+          <div>
+            <Label
+              hint={
+                geo.lat != null && geo.lng != null
+                  ? `Pin set: ${geo.lat.toFixed(5)}, ${geo.lng.toFixed(5)}`
+                  : "Optional"
+              }
+            >
+              Drop a pin on the map
+            </Label>
+            <AddressMap onLocationChange={onLocationChange} />
+          </div>
+          {err && <p className="text-[13px] text-red-700">{err}</p>}
+          <div className="flex gap-2">
+            <Button variant="primary" loading={busy} onClick={save}>Save</Button>
+            <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+          </div>
+        </div>
+      </DetailBlock>
+    );
+  }
+
+  return (
+    <DetailBlock title="Address">
+      <Row label="Line 1" value={ticket.address_line1} />
+      {ticket.address_line2 && <Row label="Line 2" value={ticket.address_line2} />}
+      {ticket.address_line3 && <Row label="Line 3" value={ticket.address_line3} />}
+      <Row label="City" value={`${ticket.city}, ${ticket.state} — ${ticket.pincode}`} />
+      {typeof ticket.latitude === "number" && typeof ticket.longitude === "number" && (
+        <Row
+          label="Map pin"
+          value={
+            <a
+              className="hover:underline"
+              target="_blank"
+              rel="noreferrer"
+              href={`https://www.google.com/maps?q=${ticket.latitude},${ticket.longitude}`}
+            >
+              {ticket.latitude.toFixed(5)}, {ticket.longitude.toFixed(5)} ↗
+            </a>
+          }
+        />
+      )}
+      {canEdit && (
+        <Row
+          label=""
+          value={
+            <button
+              type="button"
+              onClick={start}
+              className="text-[12.5px] font-medium text-ink underline-offset-2 hover:underline"
+            >
+              Edit address
+            </button>
+          }
+        />
+      )}
+    </DetailBlock>
+  );
+}
+
 function ActionPanel(props: {
   ticket: AdminTicket;
   engineers: Engineer[];
@@ -1567,7 +1911,7 @@ function ActionPanel(props: {
     third_party_device_name: string;
     third_party_issue_info: string;
     third_party_ticket_ref: string;
-  }) => void | Promise<void>;
+  }) => void | Promise<unknown>;
   onSeverity: (next: string) => void;
   onAccept: () => void;
   onStartWork: () => void;
@@ -1580,7 +1924,7 @@ function ActionPanel(props: {
   onDownloadPdf: () => void | Promise<void>;
   onRegenPdf: () => void | Promise<void>;
   defaultPaymentAmount: number;
-  onCollectPayment: (amount: number) => void | Promise<void>;
+  onCollectPayment: (amount: number) => void | Promise<unknown>;
 }) {
   const {
     ticket, engineers, currentUserId, currentUserRole, canModerate, isAdmin,
