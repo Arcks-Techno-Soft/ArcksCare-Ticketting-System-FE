@@ -113,6 +113,15 @@ export default function InstallationDetailPage() {
   const [selectedSalesRepId, setSelectedSalesRepId] = useState<number | null>(null);
   const [editingInvoice, setEditingInvoice] = useState(false);
   const [invoiceDraft, setInvoiceDraft] = useState("");
+  // Customer / contact details inline edit (business, contact, phone, email).
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [customerDraft, setCustomerDraft] = useState({
+    business_name: "",
+    business_category: "",
+    contact_name: "",
+    phone: "",
+    email: "",
+  });
   // Off-field sub-engineers: the district roster feeds the "add" picker.
   const [roster, setRoster] = useState<RosterContact[]>([]);
   const [rosterLoading, setRosterLoading] = useState(true);
@@ -538,6 +547,35 @@ export default function InstallationDetailPage() {
     if (ok) setEditingInvoice(false);
   };
 
+  const startEditCustomer = () => {
+    if (!inst) return;
+    setCustomerDraft({
+      business_name: inst.business_name ?? "",
+      business_category: inst.business_category ?? "",
+      contact_name: inst.contact_name ?? "",
+      phone: inst.phone ?? "",
+      email: inst.email ?? "",
+    });
+    setError(null);
+    setEditingCustomer(true);
+  };
+  const saveCustomer = async () => {
+    const d = customerDraft;
+    if (d.business_name.trim().length < 2) return setError("Business name is required.");
+    if (d.business_category.trim().length < 2) return setError("Business category is required.");
+    if (d.contact_name.trim().length < 2) return setError("Contact name is required.");
+    if (d.phone.replace(/[^\d+]/g, "").replace(/^\+/, "").length < 7)
+      return setError("Enter a valid phone number.");
+    const ok = await callAction("customer", "/customer", "PATCH", {
+      business_name: d.business_name.trim(),
+      business_category: d.business_category.trim(),
+      contact_name: d.contact_name.trim(),
+      phone: d.phone.trim(),
+      email: d.email.trim() || null,
+    });
+    if (ok) setEditingCustomer(false);
+  };
+
   const uploadInvoiceDoc = async (file: File) => {
     setError(null);
     setActing("invoice-doc");
@@ -616,25 +654,103 @@ export default function InstallationDetailPage() {
         <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_360px]">
           <div className="space-y-10">
             <DetailBlock title="Customer">
-              <Row label="Business" value={`${inst.business_name} · ${inst.business_category}`} />
-              <Row label="Contact" value={inst.contact_name} />
-              <Row
-                label="Phone"
-                value={
-                  <a className="hover:underline" href={`tel:${inst.phone}`}>
-                    {inst.phone}
-                  </a>
-                }
-              />
-              {inst.email && (
-                <Row
-                  label="Email"
-                  value={
-                    <a className="hover:underline" href={`mailto:${inst.email}`}>
-                      {inst.email}
-                    </a>
-                  }
-                />
+              {editingCustomer ? (
+                <div className="space-y-4 p-4">
+                  <div>
+                    <Label htmlFor="ec_business" required>Business name</Label>
+                    <Input
+                      id="ec_business"
+                      value={customerDraft.business_name}
+                      onChange={(e) => setCustomerDraft((d) => ({ ...d, business_name: e.target.value }))}
+                      placeholder="Business name"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="ec_category" required>Business category</Label>
+                    <Input
+                      id="ec_category"
+                      value={customerDraft.business_category}
+                      onChange={(e) => setCustomerDraft((d) => ({ ...d, business_category: e.target.value }))}
+                      placeholder="e.g. Restaurant, Retail Store"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="ec_contact" required>Contact name</Label>
+                    <Input
+                      id="ec_contact"
+                      value={customerDraft.contact_name}
+                      onChange={(e) => setCustomerDraft((d) => ({ ...d, contact_name: e.target.value }))}
+                      placeholder="Contact person"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="ec_phone" required>Phone</Label>
+                      <Input
+                        id="ec_phone"
+                        value={customerDraft.phone}
+                        onChange={(e) => setCustomerDraft((d) => ({ ...d, phone: e.target.value }))}
+                        placeholder="Phone"
+                        inputMode="tel"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="ec_email">Email</Label>
+                      <Input
+                        id="ec_email"
+                        value={customerDraft.email}
+                        onChange={(e) => setCustomerDraft((d) => ({ ...d, email: e.target.value }))}
+                        placeholder="Email (optional)"
+                        inputMode="email"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="primary" loading={acting === "customer"} onClick={saveCustomer}>
+                      Save
+                    </Button>
+                    <Button variant="outline" onClick={() => setEditingCustomer(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Row label="Business" value={`${inst.business_name} · ${inst.business_category}`} />
+                  <Row label="Contact" value={inst.contact_name} />
+                  <Row
+                    label="Phone"
+                    value={
+                      <a className="hover:underline" href={`tel:${inst.phone}`}>
+                        {inst.phone}
+                      </a>
+                    }
+                  />
+                  {inst.email && (
+                    <Row
+                      label="Email"
+                      value={
+                        <a className="hover:underline" href={`mailto:${inst.email}`}>
+                          {inst.email}
+                        </a>
+                      }
+                    />
+                  )}
+                  {canEditInvoice && (
+                    <Row
+                      label=""
+                      value={
+                        <button
+                          type="button"
+                          onClick={startEditCustomer}
+                          className="text-[12.5px] font-medium text-ink underline-offset-2 hover:underline"
+                        >
+                          Edit customer details
+                        </button>
+                      }
+                    />
+                  )}
+                </>
               )}
               <Row
                 label="Invoice #"
