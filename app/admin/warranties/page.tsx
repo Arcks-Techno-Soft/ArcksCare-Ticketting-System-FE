@@ -27,6 +27,9 @@ type WarrantyOut = {
   expiry_date: string; // ISO yyyy-mm-dd
   is_active: boolean;
   notes: string | null;
+  /** null when a staff member registered the unit; "ZOHO_IMPORT" for rows
+   *  loaded from the historical Zoho sales export. */
+  source: string | null;
   created_by: { name?: string; username?: string } | null;
   created_at: string;
 };
@@ -564,7 +567,19 @@ export default function WarrantyManagementPage() {
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b border-line last:border-0">
                     <td className="px-4 py-3 text-ink">{r.product_name}</td>
-                    <td className="px-4 py-3 font-mono text-[12.5px] text-ink">{r.serial_number}</td>
+                    <td className="px-4 py-3 font-mono text-[12.5px] text-ink">
+                      {r.serial_number}
+                      {/* Historical rows loaded from the Zoho sales export —
+                          flagged so staff know they weren't keyed in here. */}
+                      {r.source === "ZOHO_IMPORT" && (
+                        <span
+                          title="Imported from historical Zoho sales data"
+                          className="ml-2 inline-flex rounded-full bg-surface-sunken px-2 py-0.5 font-sans text-[10.5px] font-medium text-ink-subtle"
+                        >
+                          Zoho
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-ink-muted">{r.invoice_number ?? "—"}</td>
                     <td className="px-4 py-3 text-ink-muted">{fmtIstDate(r.sale_date)}</td>
                     <td className="px-4 py-3 text-ink-muted">{r.warranty_months} mo</td>
