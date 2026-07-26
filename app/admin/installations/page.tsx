@@ -21,6 +21,8 @@ type InstallationRow = {
   contact_name: string;
   phone: string;
   invoice_number: string;
+  // Bare calendar date (yyyy-mm-dd), or null when none is planned yet.
+  expected_installation_date?: string | null;
   status: string;
   created_by?: { id: number; name: string; role: string } | null;
   assigned_engineer?: { id: number; name: string; role: string } | null;
@@ -172,13 +174,14 @@ export default function InstallationsListPage() {
         </div>
 
         <div className="mt-8 overflow-x-auto rounded-xl2 border border-line shadow-soft">
-          <table className="w-full min-w-[720px] text-left text-[13.5px]">
+          <table className="w-full min-w-[820px] text-left text-[13.5px]">
             <thead className="bg-surface-raised">
               <tr className="text-[11px] uppercase tracking-[0.12em] text-ink-subtle">
                 <Th>Reference</Th>
                 <Th>Business</Th>
                 <Th>Contact</Th>
                 <Th>Invoice #</Th>
+                <Th>Expected date</Th>
                 <Th>Assigned</Th>
                 <Th>Status</Th>
                 <Th>Created</Th>
@@ -188,7 +191,7 @@ export default function InstallationsListPage() {
               {loading && rows.length === 0 ? (
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <td key={j} className="px-5 py-4">
                         <div className="h-3 w-3/4 rounded bg-line" />
                       </td>
@@ -197,7 +200,7 @@ export default function InstallationsListPage() {
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-ink-subtle">
+                  <td colSpan={8} className="px-5 py-12 text-center text-ink-subtle">
                     {error ?? "No installations yet."}
                   </td>
                 </tr>
@@ -234,6 +237,12 @@ export default function InstallationsListPage() {
                     </Td>
                     <Td>
                       <span className="font-mono text-[13px] text-ink">{r.invoice_number}</span>
+                    </Td>
+                    <Td>
+                      {/* fmtIstDate already renders "—" for null/blank. */}
+                      <span className={r.expected_installation_date ? "text-ink" : "text-ink-subtle"}>
+                        {fmtIstDate(r.expected_installation_date)}
+                      </span>
                     </Td>
                     <Td>
                       <span className="text-ink">

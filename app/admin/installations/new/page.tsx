@@ -33,6 +33,8 @@ type FormState = {
   email: string;
   invoice_number: string;
   products_for_installation: string;
+  // ISO yyyy-mm-dd from the date input. Optional — blank means "not planned yet".
+  expected_installation_date: string;
   address_line1: string;
   address_line2: string;
   address_line3: string;
@@ -50,6 +52,7 @@ const EMPTY: FormState = {
   email: "",
   invoice_number: "",
   products_for_installation: "",
+  expected_installation_date: "",
   address_line1: "",
   address_line2: "",
   address_line3: "",
@@ -64,6 +67,16 @@ type InvoiceMode = "later" | "enter";
 // Stored as the invoice number when the user defers entering one. The backend
 // requires a non-empty string, so this sentinel keeps the field valid.
 const INVOICE_DEFERRED = "To be added later";
+
+// Today as yyyy-mm-dd in the browser's local timezone — used as the date
+// input's `min` so a past date can't be picked. `toISOString()` would shift
+// the day for anyone east of UTC (i.e. everyone here), so build it by hand.
+function todayISO(): string {
+  const d = new Date();
+  const m = `${d.getMonth() + 1}`.padStart(2, "0");
+  const day = `${d.getDate()}`.padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
 
 export default function NewInstallationPage() {
   const router = useRouter();
@@ -174,6 +187,8 @@ export default function NewInstallationPage() {
       return setError("Enter the invoice number, or choose “To be added later”.");
     if (form.products_for_installation.trim().length < 2)
       return setError("List the products to be installed.");
+    if (form.expected_installation_date && form.expected_installation_date < todayISO())
+      return setError("The expected installation date can't be in the past.");
     if (form.address_line1.trim().length < 3) return setError("Address line 1 is required.");
     if (form.city.trim().length < 2) return setError("City is required.");
     if (!form.state) return setError("Select a state.");
@@ -193,6 +208,7 @@ export default function NewInstallationPage() {
       email: form.email.trim() || null,
       invoice_number: invoiceValue,
       products_for_installation: form.products_for_installation.trim(),
+      expected_installation_date: form.expected_installation_date || null,
       address_line1: form.address_line1.trim(),
       address_line2: form.address_line2.trim() || null,
       address_line3: form.address_line3.trim() || null,
@@ -407,6 +423,21 @@ export default function NewInstallationPage() {
             />
             <p className="mt-1 text-[12px] text-ink-subtle">
               One product per line — name and quantity.
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="expected_installation_date">Expected installation date</Label>
+            <Input
+              id="expected_installation_date"
+              type="date"
+              min={todayISO()}
+              value={form.expected_installation_date}
+              onChange={(e) => update("expected_installation_date", e.target.value)}
+            />
+            <p className="mt-1 text-[12px] text-ink-subtle">
+              Optional. Admins and managers get a WhatsApp reminder 2 days before
+              this date. You can set or change it later from the installation page.
             </p>
           </div>
 
