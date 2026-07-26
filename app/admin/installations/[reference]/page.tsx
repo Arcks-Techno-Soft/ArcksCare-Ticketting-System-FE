@@ -21,7 +21,7 @@ import {
 } from "@/components/admin/sub-engineers";
 import { INDIAN_STATES } from "@/lib/options";
 import type { LocationPayload } from "@/components/address-map";
-import { fmtIst } from "@/lib/format-date";
+import { fmtIst, fmtIstDate } from "@/lib/format-date";
 
 // Leaflet touches `window`, so the map must be client-only.
 const AddressMap = dynamic(() => import("@/components/address-map"), {
@@ -41,6 +41,9 @@ type Installation = {
   email?: string | null;
   invoice_number: string;
   products_for_installation?: string | null;
+  // Bare calendar date (yyyy-mm-dd) the job is planned for, or null when it
+  // hasn't been scheduled yet. Drives the upcoming-installation WhatsApp.
+  expected_installation_date?: string | null;
   invoice_document?: {
     filename: string;
     content_type: string;
@@ -113,6 +116,9 @@ export default function InstallationDetailPage() {
   const [selectedSalesRepId, setSelectedSalesRepId] = useState<number | null>(null);
   const [editingInvoice, setEditingInvoice] = useState(false);
   const [invoiceDraft, setInvoiceDraft] = useState("");
+  // Planned on-site date. Blank draft = clear it.
+  const [editingExpectedDate, setEditingExpectedDate] = useState(false);
+  const [expectedDateDraft, setExpectedDateDraft] = useState("");
   // Customer / contact details inline edit (business, contact, phone, email).
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [customerDraft, setCustomerDraft] = useState({
@@ -511,6 +517,9 @@ export default function InstallationDetailPage() {
   // Invoice is editable by the assignee / Admin / Manager until the
   // installation is CLOSED (after which it's frozen into the signed PDF).
   const canEditInvoice = (canModerate || isAssignee) && inst.status !== "CLOSED";
+  // The PATCH /expected-date endpoint is Admin/Manager only, so don't offer the
+  // control to an assigned engineer who'd just get a 403.
+  const canSetExpectedDate = canModerate && inst.status !== "CLOSED";
   // Off-field sub-engineers: manageable by the assignee / Admin / Manager
   // until the installation closes. Fees stay editable to the end since the
   // figure is often known only after the work is done.
@@ -545,6 +554,19 @@ export default function InstallationDetailPage() {
     }
     const ok = await callAction("invoice", "/invoice", "PATCH", { invoice_number: v });
     if (ok) setEditingInvoice(false);
+  };
+
+  const startEditExpectedDate = () => {
+    setExpectedDateDraft(inst.expected_installation_date ?? "");
+    setError(null);
+    setEditingExpectedDate(true);
+  };
+  const saveExpectedDate = async () => {
+    // Blank clears the date; the API takes null for "not planned yet".
+    const ok = await callAction("expected-date", "/expected-date", "PATCH", {
+      expected_installation_date: expectedDateDraft || null,
+    });
+    if (ok) setEditingExpectedDate(false);
   };
 
   const startEditCustomer = () => {
@@ -814,6 +836,62 @@ export default function InstallationDetailPage() {
                   }
                 />
               )}
+              <Row
+                label="Expected date"
+                value={
+                  editingExpectedDate ? (
+                    <div className="flex flex-col gap-2">
+                      <Input
+                        type="date"
+                        value={expectedDateDraft}
+                        onChange={(e) => setExpectedDateDraft(e.target.value)}
+                      />
+                      <p className="text-[12px] text-ink-subtle">
+                        Admins and managers get a WhatsApp reminder ahead of this
+                        date. Leave blank to clear it.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="primary"
+                          loading={acting === "expected-date"}
+                          onClick={saveExpectedDate}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setEditingExpectedDate(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="flex items-center gap-3">
+                      <span
+                        className={
+                          inst.expected_installation_date
+                            ? "text-[13.5px]"
+                            : "text-[13.5px] text-ink-subtle"
+                        }
+                      >
+                        {inst.expected_installation_date
+                          ? fmtIstDate(inst.expected_installation_date)
+                          : "Not scheduled"}
+                      </span>
+                      {canSetExpectedDate && (
+                        <button
+                          type="button"
+                          onClick={startEditExpectedDate}
+                          className="text-[12.5px] font-medium text-ink underline-offset-2 hover:underline"
+                        >
+                          {inst.expected_installation_date ? "Edit" : "Set"}
+                        </button>
+                      )}
+                    </span>
+                  )
+                }
+              />
               <Row
                 label="Invoice doc"
                 value={
@@ -1534,6 +1612,13 @@ function labelForEvent(e: InstallEvent): string {
     case "CUSTOMER_SIGNED": return "Customer signed";
     case "ENGINEER_SIGNED": return "Engineer signed";
     case "CLOSED": return "Closed";
+    case "EXPECTED_DATE_SET": {
+      const p = e.payload as { from?: string | null; to?: string | null } | null;
+      if (!p?.to) return "Expected installation date cleared";
+      return p.from
+        ? `Expected date moved to ${fmtIstDate(p.to)}`
+        : `Expected date set to ${fmtIstDate(p.to)}`;
+    }
     default: return e.event_type;
   }
 }
