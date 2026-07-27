@@ -20,8 +20,12 @@ export type Engineer = {
   name: string;
   role: string;
   district?: string | null;
-  /** Open workload: active tickets + pending installations assigned to them. */
+  /** Open workload total: service calls + installations still needing a visit. */
   open_ticket_count?: number;
+  /** Service calls (tickets) inside that total — primary or co-engineer. */
+  open_service_call_count?: number;
+  /** Installations inside that total. */
+  open_installation_count?: number;
 };
 
 const norm = (s?: string | null) => (s ?? "").trim().toLowerCase();
@@ -30,9 +34,10 @@ const norm = (s?: string | null) => (s ?? "").trim().toLowerCase();
 // below the regular assignees so they aren't picked up by default.
 const DEPRIORITIZED_NAMES = ["shivu", "nagaraj"];
 
-/** Sample/test users are prefixed TEST_ (name or username). */
+/** Sample/test users are prefixed TEST_ (name or username). Accepts a space or
+ *  hyphen after "test" too, so "Test Engineer" / "test-sales" sink as well. */
 const isTestUser = (e: Engineer) =>
-  /^test_/.test(norm(e.name)) || /^test_/.test(norm(e.username));
+  /^test[\s_-]/.test(norm(e.name)) || /^test[\s_-]/.test(norm(e.username));
 
 /** Real users we keep out of the "available" recommendations (Shivu, Nagaraj). */
 const isDeprioritized = (e: Engineer) =>
@@ -62,12 +67,15 @@ const byRecommendation = (a: Engineer, b: Engineer) =>
   (a.open_ticket_count ?? 0) - (b.open_ticket_count ?? 0) ||
   a.name.localeCompare(b.name);
 
-/** Caption shown under an engineer's name describing their current load. */
+/** Caption shown under an engineer's name describing their current load —
+ *  the total, then the split, e.g. "13 open jobs (SC-7 / INS-6)". SC = service
+ *  calls (tickets), INS = installations. The split is omitted if the API
+ *  didn't send it (older backend), leaving the plain total. */
 function loadCaption(
-  count: number | undefined,
+  e: Engineer,
   recommendable: boolean
 ): { text: string; free: boolean } {
-  const n = count ?? 0;
+  const n = e.open_ticket_count ?? 0;
   if (n === 0) {
     // Only tier-0 engineers get the green "Recommended · Available" treatment;
     // Shivu/Nagaraj and test users show a neutral, un-highlighted caption.
@@ -75,7 +83,12 @@ function loadCaption(
       ? { text: "Recommended · Available", free: true }
       : { text: "No open jobs", free: false };
   }
-  return { text: `${n} open job${n === 1 ? "" : "s"}`, free: false };
+  const hasSplit =
+    e.open_service_call_count !== undefined || e.open_installation_count !== undefined;
+  const split = hasSplit
+    ? ` (SC-${e.open_service_call_count ?? 0} / INS-${e.open_installation_count ?? 0})`
+    : "";
+  return { text: `${n} open job${n === 1 ? "" : "s"}${split}`, free: false };
 }
 
 type Props = {
@@ -177,7 +190,7 @@ export function EngineerPicker({
                 {e.district ? ` · ${e.district}` : ""}
               </span>
               {(() => {
-                const cap = loadCaption(e.open_ticket_count, isRecommendable(e));
+                const cap = loadCaption(e, isRecommendable(e));
                 return (
                   <span
                     className={cn(
