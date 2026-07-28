@@ -11,6 +11,8 @@ import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
 import { Label, Input, Select } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
+import { HoldDialog } from "@/components/admin/hold-dialog";
+import { HoldBadge } from "@/components/admin/status-badge";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { AttemptsBlock, type AttemptView } from "@/components/admin/attempts-block";
 import {
@@ -67,6 +69,12 @@ type Installation = {
   assigned_at?: string | null;
   completed_at?: string | null;
   closed_at?: string | null;
+  // On hold — an overlay on `status`, so `status` still reads NEW / ASSIGNED
+  // while parked. Gates every workflow action.
+  on_hold?: boolean;
+  held_at?: string | null;
+  held_by?: Engineer | null;
+  hold_reason?: string | null;
   created_at: string;
   resolution?: {
     id: number;
@@ -110,6 +118,8 @@ export default function InstallationDetailPage() {
   const [engineers, setEngineers] = useState<Engineer[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  // "hold" | "resume" | null — one dialog component serves both.
+  const [holdMode, setHoldMode] = useState<"hold" | "resume" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
   const [salesReps, setSalesReps] = useState<{ id: number; name: string; username: string }[]>([]);
@@ -497,13 +507,24 @@ export default function InstallationDetailPage() {
 
   const canModerate = isAdminLevel(user.role) || user.role === "MANAGER";
   const isAssignee = inst.assigned_engineer?.id === user.id;
-  const canAssign = canModerate && (inst.status === "NEW" || inst.status === "ASSIGNED");
-  const canWorkAttempts = (canModerate || isAssignee) && inst.status === "ASSIGNED";
+  // Parked by a Manager/Admin. `status` is untouched, so each action checks
+  // this separately — the backend 409s on all of them.
+  const onHold = !!inst.on_hold;
+  const canAssign =
+    canModerate && !onHold && (inst.status === "NEW" || inst.status === "ASSIGNED");
+  const canWorkAttempts =
+    (canModerate || isAssignee) && !onHold && inst.status === "ASSIGNED";
+  // Only Manager/Admin/Owner park and un-park, and only while the visit is
+  // still outstanding (COMPLETED is done bar the signatures).
+  const canHold =
+    canModerate && !onHold && (inst.status === "NEW" || inst.status === "ASSIGNED");
+  const canResume = canModerate && onHold;
   const attempts = inst.attempts ?? [];
   const openAttempt = attempts.find((a) => !a.ended_at) ?? null;
   const endedAttempts = attempts.filter((a) => a.ended_at).length;
   // Finishing requires at least one completed attempt and none still open.
-  const canClose = isAssignee && inst.status === "ASSIGNED" && !openAttempt && endedAttempts > 0;
+  const canClose =
+    isAssignee && !onHold && inst.status === "ASSIGNED" && !openAttempt && endedAttempts > 0;
   const customerSigned = !!inst.resolution?.customer_signed_at;
   const engineerSigned = !!inst.resolution?.engineer_signed_at;
   const canCaptureCustomer = isAssignee && inst.status === "COMPLETED" && !customerSigned;
@@ -523,7 +544,8 @@ export default function InstallationDetailPage() {
   // Off-field sub-engineers: manageable by the assignee / Admin / Manager
   // until the installation closes. Fees stay editable to the end since the
   // figure is often known only after the work is done.
-  const canManageSubEngineers = (canModerate || isAssignee) && inst.status !== "CLOSED";
+  const canManageSubEngineers =
+    (canModerate || isAssignee) && !onHold && inst.status !== "CLOSED";
   // The off-field signing link needs a resolution (created when the engineer
   // marks the installation complete) and at least one sub-engineer to sign.
   const hasSubEngineer = (inst.sub_engineers?.length ?? 0) > 0;
@@ -663,6 +685,7 @@ export default function InstallationDetailPage() {
               {inst.business_category} · Invoice {inst.invoice_number}
             </p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
           <span
             className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${
               STATUS_STYLES[inst.status] ??
@@ -671,6 +694,8 @@ export default function InstallationDetailPage() {
           >
             {inst.status.charAt(0) + inst.status.slice(1).toLowerCase()}
           </span>
+          {inst.on_hold && <HoldBadge reason={inst.hold_reason} />}
+          </div>
         </div>
 
         <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_360px]">
@@ -1009,6 +1034,37 @@ export default function InstallationDetailPage() {
                 What&apos;s next?
               </h3>
 
+              {/* Explains why the usual buttons vanished. */}
+              {onHold && (
+                <div className="mt-5 rounded-xl2 border border-amber-300 bg-amber-50 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-amber-600">
+                    On hold
+                  </p>
+                  {inst.hold_reason && (
+                    <p className="mt-1.5 text-[13.5px] leading-relaxed text-amber-900">
+                      {inst.hold_reason}
+                    </p>
+                  )}
+                  <p className="mt-2 text-[12px] text-amber-700">
+                    {inst.held_by?.name ? `Put on hold by ${inst.held_by.name}. ` : ""}
+                    Work is frozen and this installation isn&apos;t counted in
+                    anyone&apos;s open jobs. A Manager or Admin can resume it at
+                    any time.
+                  </p>
+                  {canResume && (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="md"
+                      onClick={() => setHoldMode("resume")}
+                      className="mt-3 w-full"
+                    >
+                      Resume installation
+                    </Button>
+                  )}
+                </div>
+              )}
+
               {/* Assign */}
               {canAssign && (
                 <div className="mt-5">
@@ -1098,6 +1154,30 @@ export default function InstallationDetailPage() {
                       No sales reps yet — add one under Settings · Users.
                     </p>
                   )}
+                </div>
+              )}
+
+              {/* Parking the job. The exception, not the expected next step. */}
+              {canHold && (
+                <div className="mt-5 border-t border-line pt-5">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+                    Hold
+                  </p>
+                  <p className="mt-1 text-[12.5px] text-ink-muted">
+                    Park this installation while it&apos;s blocked — premises not
+                    ready, stock pending, customer unreachable. It stops counting
+                    toward the engineer&apos;s open jobs and pauses the
+                    upcoming-installation reminder until you resume it.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="md"
+                    onClick={() => setHoldMode("hold")}
+                    className="mt-3 w-full"
+                  >
+                    Put on hold
+                  </Button>
                 </div>
               )}
 
@@ -1254,6 +1334,20 @@ export default function InstallationDetailPage() {
           </aside>
         </div>
       </section>
+
+      <HoldDialog
+        open={holdMode !== null}
+        mode={holdMode ?? "hold"}
+        kind="installation"
+        reference={reference}
+        authFetch={authFetch}
+        currentReason={inst?.hold_reason}
+        onClose={() => setHoldMode(null)}
+        onDone={() => {
+          setHoldMode(null);
+          fetchAll();
+        }}
+      />
     </AdminShell>
   );
 }

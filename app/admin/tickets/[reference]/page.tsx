@@ -19,7 +19,7 @@ const AddressMap = dynamic(() => import("@/components/address-map"), {
 
 import { useAuth, API_BASE_URL, isAdminLevel, isSuperAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
-import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
+import { StatusBadge, SeverityBadge, WarrantyBadge, HoldBadge } from "@/components/admin/status-badge";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { EngineerPicker, type Engineer } from "@/components/admin/engineer-picker";
@@ -45,6 +45,7 @@ import { Input, Label, Select } from "@/components/ui/Field";
 import { ShipPartsDialog } from "@/components/admin/ship-parts-dialog";
 import { CloseTicketDialog } from "@/components/admin/close-ticket-dialog";
 import { DeleteTicketDialog } from "@/components/admin/delete-ticket-dialog";
+import { HoldDialog } from "@/components/admin/hold-dialog";
 import { fmtIst, fmtIstDate } from "@/lib/format-date";
 
 /* ------------------------------ types ------------------------------------ */
@@ -73,6 +74,12 @@ type AdminTicket = {
   status: string;
   warranty_status: string;
   service_type: string;
+  // On hold — an overlay on `status`, so `status` still reads ASSIGNED /
+  // RESOLVING etc. while the ticket is parked. Gates every workflow action.
+  on_hold?: boolean;
+  held_at?: string | null;
+  held_by?: Engineer | null;
+  hold_reason?: string | null;
   // Third-party support details (only for THIRD_PARTY_SUPPORT tickets).
   third_party_device_name?: string | null;
   third_party_issue_info?: string | null;
@@ -207,6 +214,8 @@ export default function TicketDetailPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [closeOpen, setCloseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // "hold" | "resume" | null — one dialog component serves both.
+  const [holdMode, setHoldMode] = useState<"hold" | "resume" | null>(null);
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   // True only when the backend explicitly answered 404 for this reference.
   // Distinct from "ticket is null because a transient fetch failed", which
@@ -1042,6 +1051,7 @@ export default function TicketDetailPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={ticket.status} />
+            {ticket.on_hold && <HoldBadge reason={ticket.hold_reason} />}
             <SeverityBadge severity={ticket.severity} />
             <WarrantyBadge status={ticket.warranty_status} />
           </div>
@@ -1198,6 +1208,8 @@ export default function TicketDetailPage() {
               setResolveSummary={setResolveSummary}
               showResolveForm={showResolveForm}
               setShowResolveForm={setShowResolveForm}
+              onHoldRequest={() => setHoldMode("hold")}
+              onResumeRequest={() => setHoldMode("resume")}
               onAcknowledge={handleAcknowledge}
               onAssign={handleAssign}
               onSelfAssign={handleSelfAssign}
@@ -1365,6 +1377,20 @@ export default function TicketDetailPage() {
         onClose={() => setCloseOpen(false)}
         onClosed={() => {
           setCloseOpen(false);
+          fetchAll();
+        }}
+      />
+
+      <HoldDialog
+        open={holdMode !== null}
+        mode={holdMode ?? "hold"}
+        kind="ticket"
+        reference={reference}
+        authFetch={authFetch}
+        currentReason={ticket?.hold_reason}
+        onClose={() => setHoldMode(null)}
+        onDone={() => {
+          setHoldMode(null);
           fetchAll();
         }}
       />
@@ -1902,6 +1928,8 @@ function ActionPanel(props: {
   setResolveSummary: (s: string) => void;
   showResolveForm: boolean;
   setShowResolveForm: (b: boolean) => void;
+  onHoldRequest: () => void;
+  onResumeRequest: () => void;
   onAcknowledge: () => void;
   onAssign: () => void;
   onSelfAssign: () => void;
@@ -1933,6 +1961,7 @@ function ActionPanel(props: {
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     salesReps, selectedSalesRepId, setSelectedSalesRepId, onSetSalesRep,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
+    onHoldRequest, onResumeRequest,
     onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onThirdPartyInfo, onSeverity,
     onAccept, onStartWork, onResolve, serviceFeeInr, serviceFeeMinInr,
     onEngineerSign, onCustomerSign,
@@ -1980,9 +2009,21 @@ function ActionPanel(props: {
     signPadRef.current?.clear();
   };
 
-  const canAcknowledge = canModerate && ticket.status === "OPEN";
+  // Parked by a Manager/Admin. `status` is untouched, so every workflow action
+  // has to check this separately — the backend 409s on all of them.
+  const onHold = !!ticket.on_hold;
+  const canAcknowledge = canModerate && !onHold && ticket.status === "OPEN";
   const canAssign =
-    canModerate && ["ACKNOWLEDGED", "ASSIGNED", "ACCEPTED", "RESOLVING"].includes(ticket.status);
+    canModerate &&
+    !onHold &&
+    ["ACKNOWLEDGED", "ASSIGNED", "ACCEPTED", "RESOLVING"].includes(ticket.status);
+  // Only Manager/Admin/Owner park and un-park, and only while field work is
+  // still outstanding (RESOLVED is done bar the signature).
+  const canHold =
+    canModerate &&
+    !onHold &&
+    ["OPEN", "ACKNOWLEDGED", "ASSIGNED", "ACCEPTED", "RESOLVING"].includes(ticket.status);
+  const canResume = canModerate && onHold;
   // Warranty must be decided before assigning. Mirrors the backend gate so the
   // user sees why assigning is blocked instead of hitting a 400.
   const warrantyUnknown = ticket.warranty_status === "UNKNOWN";
@@ -1995,9 +2036,9 @@ function ActionPanel(props: {
   // whoever the ticket is currently assigned to — engineer, owner, or manager
   // who self-assigned.
   const isMyTicket = ticket.assigned_engineer?.id === currentUserId;
-  const canAccept = isMyTicket && ticket.status === "ASSIGNED";
-  const canStart = isMyTicket && ticket.status === "ACCEPTED";
-  const canResolve = isMyTicket && ticket.status === "RESOLVING";
+  const canAccept = isMyTicket && !onHold && ticket.status === "ASSIGNED";
+  const canStart = isMyTicket && !onHold && ticket.status === "ACCEPTED";
+  const canResolve = isMyTicket && !onHold && ticket.status === "RESOLVING";
   // Resolving requires at least one completed attempt and none still open.
   const openAttempt = (ticket.attempts ?? []).find((a) => !a.ended_at) ?? null;
   const endedAttempts = (ticket.attempts ?? []).filter((a) => a.ended_at).length;
@@ -2013,6 +2054,7 @@ function ActionPanel(props: {
   const isAssignee = ticket.assigned_engineer?.id === currentUserId;
   const canManageSubEngineers =
     (canModerate || isAssignee) &&
+    !onHold &&
     ticket.status !== "OPEN";
 
   // Signing state — both signatures collected in-app, or remotely via a
@@ -2078,14 +2120,52 @@ function ActionPanel(props: {
   const hasAnyAction =
     canAcknowledge || canAssign || isAdmin || canAccept || canStart || canResolve ||
     canCaptureCustomer || canEngineerSign || canGenerateFieldLink || canDownloadPdf ||
-    paymentPending || canCreditSalesRep ||
+    paymentPending || canCreditSalesRep || canHold || canResume ||
     (ticket.status === "RESOLVED" && !!ticket.resolution);
+
+  // The hold banner explains why the usual buttons vanished. Rendered in both
+  // the empty and populated branches so an engineer looking at a parked ticket
+  // isn't told "no actions available" with no reason given.
+  const holdBanner = onHold ? (
+    <div className="rounded-xl2 border border-amber-300 bg-amber-50 p-4">
+      <p className="text-[11px] uppercase tracking-[0.16em] text-amber-600">
+        On hold
+      </p>
+      {ticket.hold_reason && (
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-amber-900">
+          {ticket.hold_reason}
+        </p>
+      )}
+      <p className="mt-2 text-[12px] text-amber-700">
+        {ticket.held_by?.name ? `Put on hold by ${ticket.held_by.name}. ` : ""}
+        Work is frozen and this ticket isn&apos;t counted in anyone&apos;s open
+        jobs. A Manager or Admin can resume it at any time.
+      </p>
+      {canResume && (
+        <Button
+          type="button"
+          variant="primary"
+          size="md"
+          onClick={onResumeRequest}
+          className="mt-3 w-full"
+        >
+          Resume ticket
+        </Button>
+      )}
+    </div>
+  ) : null;
+
   if (!hasAnyAction) {
     return (
-      <div className="rounded-xl2 border border-line bg-surface-raised p-5 text-[13px] text-ink-muted">
-        No actions available at status <strong>{ticket.status}</strong>.
-        {currentUserRole === "ENGINEER" && !isMyTicket && (
-          <> This ticket isn&apos;t assigned to you.</>
+      <div className="space-y-4">
+        {holdBanner}
+        {!onHold && (
+          <div className="rounded-xl2 border border-line bg-surface-raised p-5 text-[13px] text-ink-muted">
+            No actions available at status <strong>{ticket.status}</strong>.
+            {currentUserRole === "ENGINEER" && !isMyTicket && (
+              <> This ticket isn&apos;t assigned to you.</>
+            )}
+          </div>
         )}
       </div>
     );
@@ -2099,6 +2179,8 @@ function ActionPanel(props: {
           What&apos;s next?
         </h3>
       </div>
+
+      {holdBanner}
 
       {canAcknowledge && (
         <div>
@@ -2794,6 +2876,30 @@ function ActionPanel(props: {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Parking the job. Last in the panel — it's the exception, not the
+          expected next step. */}
+      {canHold && (
+        <div className="border-t border-line pt-5">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
+            Hold
+          </p>
+          <p className="mt-1 text-[12.5px] text-ink-muted">
+            Park this ticket while it&apos;s blocked — waiting on a spare, on the
+            customer, on a third party. It stops counting toward the
+            engineer&apos;s open jobs and its SLA clock pauses until you resume it.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            onClick={onHoldRequest}
+            className="mt-3 w-full"
+          >
+            Put on hold
+          </Button>
         </div>
       )}
 
