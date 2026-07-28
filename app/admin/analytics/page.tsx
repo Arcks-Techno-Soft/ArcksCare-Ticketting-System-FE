@@ -12,6 +12,8 @@ type Analytics = {
   kpis: {
     total_tickets: number;
     open_tickets: number;
+    // Held jobs are excluded from open_tickets and counted here instead.
+    on_hold_tickets?: number;
     resolved_tickets: number;
     closed_tickets: number;
     window_tickets: number;
@@ -131,7 +133,8 @@ export default function AnalyticsPage() {
             {/* KPI cards */}
             <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
               <KpiCard label={`Tickets · ${days}d`} value={data.kpis.window_tickets} hint="Created within the window" />
-              <KpiCard label="Currently open" value={data.kpis.open_tickets} hint="Live · Open/Acked/Assigned/Resolving" />
+              <KpiCard label="Currently open" value={data.kpis.open_tickets} hint="Live · Open/Acked/Assigned/Resolving · excludes held" />
+              <KpiCard label="On hold" value={data.kpis.on_hold_tickets ?? 0} hint="Parked — frozen and off the open count" />
               <KpiCard label={`Resolved · ${days}d`} value={data.kpis.window_resolved} hint="Of tickets created in window" />
               <KpiCard
                 label="Avg resolution"
