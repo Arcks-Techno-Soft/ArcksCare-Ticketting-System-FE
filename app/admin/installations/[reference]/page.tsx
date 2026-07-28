@@ -96,6 +96,9 @@ type InstallEvent = {
   from_status?: string | null;
   to_status?: string | null;
   payload?: Record<string, unknown> | null;
+  // Free-text attached to the event (e.g. the note given when resuming).
+  // InstallationEventOut has always returned it; the type just never said so.
+  note?: string | null;
   created_at: string;
   actor?: { id: number; name: string; role: string } | null;
 };
@@ -1706,6 +1709,13 @@ function labelForEvent(e: InstallEvent): string {
     case "CUSTOMER_SIGNED": return "Customer signed";
     case "ENGINEER_SIGNED": return "Engineer signed";
     case "CLOSED": return "Closed";
+    case "HELD": {
+      const p = (e.payload as { reason?: string } | null) ?? {};
+      return p.reason ? `Put on hold — ${p.reason}` : "Put on hold";
+    }
+    case "RESUMED": {
+      return e.note ? `Resumed — ${e.note}` : "Resumed";
+    }
     case "EXPECTED_DATE_SET": {
       const p = e.payload as { from?: string | null; to?: string | null } | null;
       if (!p?.to) return "Expected installation date cleared";

@@ -3003,6 +3003,13 @@ function labelForEvent(e: TicketEvent): string {
       return p.signer_name ? `Sub-engineer signed (${p.signer_name})` : "Sub-engineer signed";
     }
     case "CLOSED": return "Closed";
+    case "HELD": {
+      const p = (e.payload as { reason?: string } | null) ?? {};
+      return p.reason ? `Put on hold — ${p.reason}` : "Put on hold";
+    }
+    case "RESUMED": {
+      return e.note ? `Resumed — ${e.note}` : "Resumed";
+    }
     case "FORCE_CLOSED": {
       const p = (e.payload as { reason?: string } | null) ?? {};
       return p.reason ? `Force-closed by admin — ${p.reason}` : "Force-closed by admin";
