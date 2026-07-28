@@ -11,6 +11,7 @@ import { DashboardViewTabs } from "@/components/admin/dashboard-tabs";
 import { Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { LatestNotePopover } from "@/components/admin/latest-note-popover";
+import { HoldBadge } from "@/components/admin/status-badge";
 import { fmtIst, fmtIstDate } from "@/lib/format-date";
 
 type InstallationRow = {
@@ -27,6 +28,10 @@ type InstallationRow = {
   created_by?: { id: number; name: string; role: string } | null;
   assigned_engineer?: { id: number; name: string; role: string } | null;
   sales_rep?: { id: number; name: string; role: string } | null;
+  // Overlay on `status` — a held installation keeps its workflow status and is
+  // badged rather than hidden.
+  on_hold?: boolean;
+  hold_reason?: string | null;
   created_at: string;
 };
 
@@ -53,6 +58,8 @@ export default function InstallationsListPage() {
   const [rows, setRows] = useState<InstallationRow[]>([]);
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState("");
+  // Hold is orthogonal to status, so it gets its own pill.
+  const [holdFilter, setHoldFilter] = useState<"" | "held">("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -74,6 +81,7 @@ export default function InstallationsListPage() {
   const fetchRows = useCallback(async () => {
     const qs = new URLSearchParams();
     if (statusFilter) qs.set("status", statusFilter);
+    if (holdFilter) qs.set("on_hold", "true");
     if (debouncedSearch.trim()) qs.set("search", debouncedSearch.trim());
     qs.set("limit", "50");
 
@@ -93,7 +101,7 @@ export default function InstallationsListPage() {
     } finally {
       setLoading(false);
     }
-  }, [authFetch, router, statusFilter, debouncedSearch]);
+  }, [authFetch, router, statusFilter, holdFilter, debouncedSearch]);
 
   useEffect(() => {
     if (!user) return;
@@ -164,6 +172,17 @@ export default function InstallationsListPage() {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setHoldFilter(holdFilter === "held" ? "" : "held")}
+            className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${
+              holdFilter === "held"
+                ? "border-amber-500 bg-amber-500 text-white"
+                : "border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-500"
+            }`}
+          >
+            On hold
+          </button>
           <div className="ml-auto w-full md:w-80">
             <Input
               placeholder="Search by reference, business, invoice…"
@@ -257,6 +276,11 @@ export default function InstallationsListPage() {
                       >
                         {r.status.charAt(0) + r.status.slice(1).toLowerCase()}
                       </span>
+                      {r.on_hold && (
+                        <div className="mt-1">
+                          <HoldBadge reason={r.hold_reason} />
+                        </div>
+                      )}
                       <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
                         <LatestNotePopover
                           notesUrl={`${API_BASE_URL}/api/v1/admin/installations/${r.reference}/notes`}

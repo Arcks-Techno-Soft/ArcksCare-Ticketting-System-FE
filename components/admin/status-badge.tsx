@@ -27,6 +27,22 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * Sits NEXT TO the status pill, never replaces it: hold is an overlay, so a
+ * held job still has a real workflow status worth showing.
+ */
+export function HoldBadge({ reason }: { reason?: string | null }) {
+  return (
+    <span
+      title={reason ? `On hold — ${reason}` : "On hold"}
+      className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[12px] font-medium text-amber-800"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      On hold
+    </span>
+  );
+}
+
 export function SeverityBadge({ severity }: { severity: string }) {
   const cls = SEVERITY_STYLES[severity] ?? "text-ink border-line bg-white";
   return (

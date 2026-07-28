@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { useAuth, API_BASE_URL, isSuperAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { DashboardViewTabs } from "@/components/admin/dashboard-tabs";
-import { StatusBadge, SeverityBadge, WarrantyBadge } from "@/components/admin/status-badge";
+import { StatusBadge, SeverityBadge, WarrantyBadge, HoldBadge } from "@/components/admin/status-badge";
 import { Input } from "@/components/ui/Field";
 import { fmtIst, fmtIstTime, fmtIstDate, fmtIstDateDMY } from "@/lib/format-date";
 import { CloseTicketDialog } from "@/components/admin/close-ticket-dialog";
@@ -30,6 +30,10 @@ type AdminTicket = {
   warranty_status: string;
   raised_by?: { id: number; name: string; role?: string } | null;
   assigned_engineer?: { id: number; name: string } | null;
+  // Overlay on `status` — a held ticket keeps its workflow status and is
+  // badged rather than hidden.
+  on_hold?: boolean;
+  hold_reason?: string | null;
   created_at: string;
 };
 
@@ -95,6 +99,9 @@ export default function AdminTicketsPage() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState("");
+  // Hold is orthogonal to status, so it gets its own pill: "" = show all
+  // (held rows included, badged), "held" / "live" narrow to one side.
+  const [holdFilter, setHoldFilter] = useState<"" | "held" | "live">("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -139,7 +146,7 @@ export default function AdminTicketsPage() {
   // sitting on a page that no longer exists.
   useEffect(() => {
     setPage(0);
-  }, [statusFilter, debouncedSearch, sortBy, businessValue, engineerValue, pageSize]);
+  }, [statusFilter, holdFilter, debouncedSearch, sortBy, businessValue, engineerValue, pageSize]);
 
   // Gate: redirect to login if not authed
   useEffect(() => {
@@ -149,6 +156,7 @@ export default function AdminTicketsPage() {
   const fetchTickets = useCallback(async () => {
     const qs = new URLSearchParams();
     if (statusFilter) qs.set("status", statusFilter);
+    if (holdFilter) qs.set("on_hold", holdFilter === "held" ? "true" : "false");
     if (debouncedSearch.trim()) qs.set("search", debouncedSearch.trim());
     applySortParams(qs);
     qs.set("limit", String(pageSize));
@@ -174,7 +182,7 @@ export default function AdminTicketsPage() {
     } finally {
       setInitialLoading(false);
     }
-  }, [authFetch, router, statusFilter, debouncedSearch, applySortParams, page, pageSize]);
+  }, [authFetch, router, statusFilter, holdFilter, debouncedSearch, applySortParams, page, pageSize]);
 
   // Aggregate counts for the status pills. Note: the status filter is
   // intentionally NOT sent — every pill must show its count regardless of which
@@ -316,6 +324,17 @@ export default function AdminTicketsPage() {
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setHoldFilter(holdFilter === "held" ? "" : "held")}
+              className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${
+                holdFilter === "held"
+                  ? "border-amber-500 bg-amber-500 text-white"
+                  : "border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-500"
+              }`}
+            >
+              On hold
+            </button>
           </div>
         </div>
 
@@ -471,6 +490,11 @@ export default function AdminTicketsPage() {
                     <Td><SeverityBadge severity={t.severity} /></Td>
                     <Td>
                       <StatusBadge status={t.status} />
+                      {t.on_hold && (
+                        <div className="mt-1">
+                          <HoldBadge reason={t.hold_reason} />
+                        </div>
+                      )}
                       {t.assigned_engineer && (
                         <div
                           className="mt-1 max-w-[150px] truncate text-[12px] text-ink-subtle"
