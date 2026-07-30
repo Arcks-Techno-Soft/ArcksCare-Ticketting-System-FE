@@ -81,6 +81,9 @@ export default function AdminTicketsPage() {
   const [actionRef, setActionRef] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<"close" | "delete" | null>(null);
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
+  // Every visible ticket held => the severity column shows only hold reasons,
+  // so its header is relabelled "Reason".
+  const allOnHold = tickets.length > 0 && tickets.every((t) => t.on_hold);
   const [total, setTotal] = useState(0);
   // Per-status counts come from a dedicated aggregate endpoint, NOT from the
   // currently-fetched page — otherwise selecting one status would zero out the
@@ -422,7 +425,10 @@ export default function AdminTicketsPage() {
                 <Th>Business</Th>
                 <Th>Product · Serial</Th>
                 <Th>Issue</Th>
-                <Th>Severity</Th>
+                {/* When every visible ticket is on hold (the "On hold" filter,
+                    typically) that column holds nothing but hold reasons, so
+                    label it for what it actually shows. */}
+                <Th>{allOnHold ? "Reason" : "Severity"}</Th>
                 <Th>Status</Th>
                 <Th>Warranty</Th>
                 <Th>Created</Th>

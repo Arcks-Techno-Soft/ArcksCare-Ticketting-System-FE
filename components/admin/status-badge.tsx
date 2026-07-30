@@ -45,14 +45,18 @@ export function HoldBadge({ reason }: { reason?: string | null }) {
 
 /** Why a ticket is parked, shown in the Severity column in place of the
  *  severity badge: while nobody is working the ticket, what blocks it matters
- *  more than how urgent it would otherwise be. Truncates — the full text is in
- *  the tooltip. */
+ *  more than how urgent it would otherwise be.
+ *
+ *  Wraps rather than truncating — a half-read reason ("Customer not ready to
+ *  pay th…") is worse than a second line, and these rows are already multi-line
+ *  from the product/serial column. Long unbroken strings still break rather
+ *  than widen the column. */
 export function HoldReason({ reason }: { reason?: string | null }) {
   const text = reason?.trim();
   return (
     <span
       title={text ? `On hold — ${text}` : "On hold"}
-      className="block max-w-[180px] truncate text-[12px] font-medium text-amber-700"
+      className="block max-w-[240px] whitespace-normal break-words text-[12px] font-medium leading-snug text-amber-700"
     >
       {text || "On hold — no reason given"}
     </span>
