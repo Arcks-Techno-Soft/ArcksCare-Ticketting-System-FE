@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { useAuth, API_BASE_URL, isSuperAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { DashboardViewTabs } from "@/components/admin/dashboard-tabs";
-import { StatusBadge, SeverityBadge, WarrantyBadge, HoldBadge } from "@/components/admin/status-badge";
+import { StatusBadge, SeverityBadge, WarrantyBadge, HoldBadge, HoldReason } from "@/components/admin/status-badge";
 import { Input } from "@/components/ui/Field";
 import { fmtIst, fmtIstTime, fmtIstDate, fmtIstDateDMY } from "@/lib/format-date";
 import { CloseTicketDialog } from "@/components/admin/close-ticket-dialog";
@@ -487,7 +487,13 @@ export default function AdminTicketsPage() {
                     <Td>
                       <span className="text-ink">{t.issue_category}</span>
                     </Td>
-                    <Td><SeverityBadge severity={t.severity} /></Td>
+                    <Td>
+                      {t.on_hold ? (
+                        <HoldReason reason={t.hold_reason} />
+                      ) : (
+                        <SeverityBadge severity={t.severity} />
+                      )}
+                    </Td>
                     <Td>
                       <StatusBadge status={t.status} />
                       {t.on_hold && (
