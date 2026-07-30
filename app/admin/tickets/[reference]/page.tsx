@@ -86,11 +86,19 @@ type AdminTicket = {
   third_party_ticket_ref?: string | null;
   // Payment tracking. payment_status null = legacy ticket (never gated).
   // payment_required is the backend-computed gate (OOW, or covered + charges).
-  payment_status?: "PENDING" | "COLLECTED" | null;
+  // COLLECTED only appears on historical rows; new tickets go
+  // PENDING → AWAITING_VERIFICATION → VERIFIED.
+  payment_status?: "PENDING" | "COLLECTED" | "AWAITING_VERIFICATION" | "VERIFIED" | null;
   payment_required?: boolean;
   payment_amount_inr?: number | null;
   payment_collected_at?: string | null;
   payment_collected_by?: Engineer | null;
+  // Admin verification of the collected money. A ticket that owed anything can't
+  // close until payment_verified is true.
+  payment_verified?: boolean;
+  payment_awaiting_verification?: boolean;
+  payment_verified_at?: string | null;
+  payment_verified_by?: Engineer | null;
   // Partial-payment money breakdown. Ticket closes only when pending hits ₹0.
   amount_due_inr?: number;
   amount_collected_inr?: number;
@@ -620,6 +628,13 @@ export default function TicketDetailPage() {
   const handleCollectPayment = (amount: number) =>
     callAction("collect-payment", "/collect-payment", "POST", {
       amount_collected_inr: amount,
+    });
+
+  // Admin-only confirmation that the collected money actually arrived. This is
+  // what closes a ticket that owed anything — collecting no longer does.
+  const handleVerifyPayment = (note: string) =>
+    callAction("verify-payment", "/verify-payment", "POST", {
+      note: note.trim() || null,
     });
 
   const handleServiceType = (next: string) =>
@@ -1229,6 +1244,7 @@ export default function TicketDetailPage() {
               onRegenPdf={handleRegenPdf}
               defaultPaymentAmount={charges?.grand_total_inr ?? 0}
               onCollectPayment={handleCollectPayment}
+              onVerifyPayment={handleVerifyPayment}
             />
             {!isRemote && !isThirdParty && (
               <ShipmentsCard
@@ -1953,6 +1969,7 @@ function ActionPanel(props: {
   onRegenPdf: () => void | Promise<void>;
   defaultPaymentAmount: number;
   onCollectPayment: (amount: number) => void | Promise<unknown>;
+  onVerifyPayment: (note: string) => void | Promise<unknown>;
 }) {
   const {
     ticket, engineers, currentUserId, currentUserRole, canModerate, isAdmin,
@@ -1966,13 +1983,15 @@ function ActionPanel(props: {
     onAccept, onStartWork, onResolve, serviceFeeInr, serviceFeeMinInr,
     onEngineerSign, onCustomerSign,
     onGenerateFieldLink, onDownloadPdf, onRegenPdf,
-    defaultPaymentAmount, onCollectPayment,
+    defaultPaymentAmount, onCollectPayment, onVerifyPayment,
   } = props;
   const [resolveFeeDraft, setResolveFeeDraft] = useState("");
   const signPadRef = useRef<SignaturePadHandle>(null);
   const [signEmpty, setSignEmpty] = useState(true);
   // null = show defaultPaymentAmount (the billable total) until the user edits.
   const [paymentDraft, setPaymentDraft] = useState<string | null>(null);
+  // Optional payment reference an Admin records when verifying receipt.
+  const [verifyNote, setVerifyNote] = useState("");
 
   // Customer signature capture (on engineer's device)
   const custPadRef = useRef<SignaturePadHandle>(null);
@@ -2103,8 +2122,21 @@ function ActionPanel(props: {
     !!ticket.payment_required &&
     ticket.status === "RESOLVED" &&
     ticket.payment_status === "PENDING";
-  const paymentCollected = ticket.payment_status === "COLLECTED";
+  // Collected in full but not yet verified by an Admin — this is what now holds
+  // the ticket in RESOLVED. Falls back to deriving it for a pre-deploy backend.
+  const paymentAwaitingVerification =
+    ticket.payment_awaiting_verification ??
+    (!!ticket.payment_required &&
+      (ticket.payment_status === "AWAITING_VERIFICATION" ||
+        (ticket.payment_status === "COLLECTED" && ticket.status !== "CLOSED")));
+  const paymentVerified =
+    ticket.payment_verified ??
+    (ticket.payment_status === "VERIFIED" ||
+      (ticket.payment_status === "COLLECTED" && ticket.status === "CLOSED"));
   const canCollectPayment = canModerate || isAssignee;
+  // Deliberately Admin/Super Admin only — not Manager, and not the engineer who
+  // banked the cash. Mirrors workflow.verify_payment on the backend.
+  const canVerifyPayment = isAdmin && paymentAwaitingVerification;
   // Remote-support tickets have no signatures, so payment can be collected as
   // soon as they're RESOLVED (isRemote is declared above). Site visits collect
   // after both signatures.
@@ -2120,7 +2152,8 @@ function ActionPanel(props: {
   const hasAnyAction =
     canAcknowledge || canAssign || isAdmin || canAccept || canStart || canResolve ||
     canCaptureCustomer || canEngineerSign || canGenerateFieldLink || canDownloadPdf ||
-    paymentPending || canCreditSalesRep || canHold || canResume ||
+    paymentPending || paymentAwaitingVerification ||
+    canCreditSalesRep || canHold || canResume ||
     (ticket.status === "RESOLVED" && !!ticket.resolution);
 
   // The hold banner explains why the usual buttons vanished. Rendered in both
@@ -2548,7 +2581,7 @@ function ActionPanel(props: {
                       }
                     }}
                   >
-                    {clearsBalance ? "Collect & close" : "Collect part-payment"}
+                    {clearsBalance ? "Collect full payment" : "Collect part-payment"}
                   </Button>
                 </div>
                 {!validDraft && (
@@ -2561,18 +2594,74 @@ function ActionPanel(props: {
                     ₹{(amountPending - draftNum).toLocaleString("en-IN")} will remain pending — the ticket stays open until paid in full.
                   </p>
                 )}
+                {validDraft && clearsBalance && (
+                  <p className="mt-1.5 text-[12px] text-ink-subtle">
+                    This records the payment but does <span className="font-medium">not</span> close
+                    the ticket — an Admin verifies the money was received, then closes it.
+                  </p>
+                )}
               </>
             )}
           </div>
         );
       })()}
 
-      {/* Payment collected confirmation */}
-      {paymentCollected && ticket.payment_amount_inr != null && (
+      {/* ---------- payment collected, awaiting Admin verification ---------- */}
+      {paymentAwaitingVerification && (
+        <div className="border-t border-line pt-5">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.1em] text-sky-700">
+              Awaiting payment verification
+            </span>
+          </div>
+          <p className="mt-2 text-[12.5px] text-ink-muted">
+            ₹{amountCollected.toLocaleString("en-IN")} recorded as collected
+            {ticket.payment_collected_by ? ` by ${ticket.payment_collected_by.name}` : ""}
+            {ticket.payment_collected_at
+              ? ` on ${new Date(ticket.payment_collected_at).toLocaleDateString("en-IN")}`
+              : ""}
+            . The ticket stays open until an Admin confirms the money was received.
+          </p>
+          {canVerifyPayment ? (
+            <>
+              <input
+                type="text"
+                value={verifyNote}
+                onChange={(e) => setVerifyNote(e.target.value)}
+                maxLength={500}
+                placeholder="Reference (optional) — e.g. UPI / bank ref"
+                className="mt-3 w-full rounded-md border border-line bg-white px-2.5 py-1.5 text-[13.5px] text-ink
+                           focus:border-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
+              />
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                loading={acting === "verify-payment"}
+                onClick={() => {
+                  void onVerifyPayment(verifyNote);
+                  setVerifyNote("");
+                }}
+                className="mt-2 w-full"
+              >
+                Verify payment &amp; close
+              </Button>
+            </>
+          ) : (
+            <p className="mt-1.5 text-[12px] text-ink-subtle">
+              Only an Admin can verify the payment and close this ticket.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Payment verified confirmation */}
+      {paymentVerified && ticket.payment_amount_inr != null && (
         <div className="border-t border-line pt-5">
           <p className="text-[12.5px] text-emerald-700">
-            Payment collected · ₹{ticket.payment_amount_inr.toLocaleString("en-IN")}
-            {ticket.payment_collected_by ? ` by ${ticket.payment_collected_by.name}` : ""}
+            Payment verified · ₹{ticket.payment_amount_inr.toLocaleString("en-IN")}
+            {ticket.payment_collected_by ? ` collected by ${ticket.payment_collected_by.name}` : ""}
+            {ticket.payment_verified_by ? ` · verified by ${ticket.payment_verified_by.name}` : ""}
           </p>
         </div>
       )}
@@ -3026,6 +3115,24 @@ function labelForEvent(e: TicketEvent): string {
     case "PARTS_DELIVERED": {
       const p = (e.payload as { courier?: string } | null) ?? {};
       return p.courier ? `Shipment delivered (${p.courier})` : "Shipment delivered";
+    }
+    case "PAYMENT_COLLECTED": {
+      const p = (e.payload as { amount_inr?: number; partial?: boolean } | null) ?? {};
+      const amt = p.amount_inr != null ? ` ₹${p.amount_inr.toLocaleString("en-IN")}` : "";
+      return p.partial ? `Part-payment collected${amt}` : `Payment collected${amt}`;
+    }
+    case "PAYMENT_PENDING": return "Payment pending";
+    case "PAYMENT_AWAITING_VERIFICATION":
+      return "Collected in full — awaiting Admin verification";
+    case "PAYMENT_VERIFIED": {
+      const p = (e.payload as { verified_amount_inr?: number } | null) ?? {};
+      const amt =
+        p.verified_amount_inr != null
+          ? ` ₹${p.verified_amount_inr.toLocaleString("en-IN")}`
+          : "";
+      return e.note
+        ? `Payment verified${amt} — ${e.note}`
+        : `Payment verified${amt}`;
     }
     default: return e.event_type;
   }
