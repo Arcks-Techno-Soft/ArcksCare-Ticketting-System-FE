@@ -43,6 +43,22 @@ export function HoldBadge({ reason }: { reason?: string | null }) {
   );
 }
 
+/** Why a ticket is parked, shown in the Severity column in place of the
+ *  severity badge: while nobody is working the ticket, what blocks it matters
+ *  more than how urgent it would otherwise be. Truncates — the full text is in
+ *  the tooltip. */
+export function HoldReason({ reason }: { reason?: string | null }) {
+  const text = reason?.trim();
+  return (
+    <span
+      title={text ? `On hold — ${text}` : "On hold"}
+      className="block max-w-[180px] truncate text-[12px] font-medium text-amber-700"
+    >
+      {text || "On hold — no reason given"}
+    </span>
+  );
+}
+
 export function SeverityBadge({ severity }: { severity: string }) {
   const cls = SEVERITY_STYLES[severity] ?? "text-ink border-line bg-white";
   return (
