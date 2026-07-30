@@ -89,6 +89,9 @@ export default function AdminTicketsPage() {
   // currently-fetched page — otherwise selecting one status would zero out the
   // counts on every other pill.
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  // Held tickets are counted here and nowhere else — the API leaves them out of
+  // by_status so the pills partition the inbox rather than double-counting.
+  const [holdCount, setHoldCount] = useState(0);
   const [grandTotal, setGrandTotal] = useState(0);
   // True once the aggregate endpoint answers successfully. While false (e.g.
   // backend not yet deployed) we fall back to counts derived from the loaded
@@ -159,7 +162,14 @@ export default function AdminTicketsPage() {
   const fetchTickets = useCallback(async () => {
     const qs = new URLSearchParams();
     if (statusFilter) qs.set("status", statusFilter);
-    if (holdFilter) qs.set("on_hold", holdFilter === "held" ? "true" : "false");
+    if (holdFilter) {
+      qs.set("on_hold", holdFilter === "held" ? "true" : "false");
+    } else if (statusFilter) {
+      // A status pill counts live tickets only — held ones are counted under
+      // "On hold" — so the list has to exclude them too, or "Resolving · 8"
+      // would open a list of 10. Unfiltered ("All") still shows everything.
+      qs.set("on_hold", "false");
+    }
     if (debouncedSearch.trim()) qs.set("search", debouncedSearch.trim());
     applySortParams(qs);
     qs.set("limit", String(pageSize));
@@ -204,8 +214,13 @@ export default function AdminTicketsPage() {
         setCountsAvailable(false);
         return;
       }
-      const data = (await res.json()) as { by_status: Record<string, number>; total: number };
+      const data = (await res.json()) as {
+        by_status: Record<string, number>;
+        on_hold?: number;
+        total: number;
+      };
       setStatusCounts(data.by_status ?? {});
+      setHoldCount(data.on_hold ?? 0);
       setGrandTotal(data.total ?? 0);
       setCountsAvailable(true);
     } catch {
@@ -266,9 +281,19 @@ export default function AdminTicketsPage() {
 
   // Prefer the aggregate endpoint. If it isn't available, derive counts from the
   // loaded page (matches the pre-fix behaviour) rather than showing zeros.
+  // Held tickets go to the On hold tally only, mirroring the API, so the
+  // fallback partitions the same way the aggregate endpoint does.
   const clientCounts: Record<string, number> = {};
-  for (const t of tickets) clientCounts[t.status] = (clientCounts[t.status] ?? 0) + 1;
+  let clientHoldCount = 0;
+  for (const t of tickets) {
+    if (t.on_hold) {
+      clientHoldCount += 1;
+      continue;
+    }
+    clientCounts[t.status] = (clientCounts[t.status] ?? 0) + 1;
+  }
   const counts = countsAvailable ? statusCounts : clientCounts;
+  const holdTotal = countsAvailable ? holdCount : clientHoldCount;
   const allCount = countsAvailable ? grandTotal : total;
 
   if (!ready || !user) return null;
@@ -336,7 +361,7 @@ export default function AdminTicketsPage() {
                   : "border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-500"
               }`}
             >
-              On hold
+              On hold {holdTotal ? `· ${holdTotal}` : ""}
             </button>
           </div>
         </div>
