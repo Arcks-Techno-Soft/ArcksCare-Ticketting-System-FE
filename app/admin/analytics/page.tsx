@@ -25,7 +25,16 @@ type Analytics = {
   tickets_per_day: { date: string; created: number; resolved: number }[];
   resolution_trend: { date: string; avg_hours: number | null; count: number }[];
   issue_breakdown: { issue_category: string; avg_hours: number; resolved_count: number }[];
-  product_breakdown: { product_category: string; total: number; resolved: number; avg_hours: number }[];
+  product_breakdown: {
+    product_category: string;
+    total: number;
+    resolved: number;
+    avg_hours: number;
+    // Warranty split per product (added with the revenue block; optional so an
+    // older backend payload still renders).
+    under_warranty?: number;
+    out_of_warranty?: number;
+  }[];
   engineer_performance: {
     engineer_id: number;
     name: string;
@@ -34,7 +43,37 @@ type Analytics = {
     avg_hours: number;
     completion_rate: number;
   }[];
+  // Revenue & warranty block — optional so the page renders against an older
+  // backend that doesn't send it yet.
+  revenue?: {
+    billed_inr: number;
+    collected_inr: number;
+    outstanding_inr: number;
+    collection_rate: number;
+    awaiting_verification: number;
+    tracked_tickets: number;
+    untracked_tickets: number;
+  };
+  warranty_mix?: Record<string, number>;
+  service_type_mix?: Record<string, number>;
 };
+
+const WARRANTY_LABELS: Record<string, string> = {
+  UNDER_WARRANTY: "Under warranty",
+  OUT_OF_WARRANTY: "Out of warranty",
+  AMC: "AMC",
+  UNKNOWN: "Unknown (untriaged)",
+};
+const WARRANTY_ORDER = ["UNDER_WARRANTY", "OUT_OF_WARRANTY", "AMC", "UNKNOWN"];
+
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  SITE_VISIT: "Site visit",
+  REMOTE_SUPPORT: "Remote support",
+  THIRD_PARTY_SUPPORT: "Third-party",
+};
+
+/** ₹ with Indian digit grouping (1,23,456). */
+const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: "Open",
@@ -143,6 +182,71 @@ export default function AnalyticsPage() {
               />
             </div>
 
+            {/* Revenue & warranty — money scoped to payment-tracked tickets so
+                legacy pre-tracking tickets can't fake a low collection rate. */}
+            {data.revenue && (
+              <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+                <KpiCard
+                  label={`Billed · ${days}d`}
+                  value={inr(data.revenue.billed_inr)}
+                  hint={
+                    data.revenue.untracked_tickets > 0
+                      ? `${data.revenue.tracked_tickets} payment-tracked tickets · ${data.revenue.untracked_tickets} legacy excluded`
+                      : `${data.revenue.tracked_tickets} payment-tracked tickets`
+                  }
+                />
+                <KpiCard
+                  label="Collected"
+                  value={inr(data.revenue.collected_inr)}
+                  hint={`${data.revenue.collection_rate.toFixed(1)}% of billed`}
+                />
+                <KpiCard
+                  label="Outstanding"
+                  value={inr(data.revenue.outstanding_inr)}
+                  hint="Balance still due across the window's tickets"
+                />
+                <KpiCard
+                  label="Awaiting verification"
+                  value={data.revenue.awaiting_verification}
+                  hint="Collected in full — needs an Admin to verify"
+                />
+              </div>
+            )}
+
+            {(data.warranty_mix || data.service_type_mix) && (
+              <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {data.warranty_mix && (
+                  <ChartCard title="Warranty mix" subtitle={`Tickets created · last ${days}d`}>
+                    <HorizontalBars
+                      rows={WARRANTY_ORDER.filter((k) => (data.warranty_mix?.[k] ?? 0) > 0).map((k) => ({
+                        label: WARRANTY_LABELS[k] ?? k,
+                        value: data.warranty_mix?.[k] ?? 0,
+                        meta: "",
+                        valueLabel: String(data.warranty_mix?.[k] ?? 0),
+                      }))}
+                    />
+                  </ChartCard>
+                )}
+                {data.service_type_mix && (
+                  <ChartCard
+                    title="Site visit vs remote"
+                    subtitle={`Tickets created · last ${days}d — remote resolutions are the cheapest`}
+                  >
+                    <HorizontalBars
+                      rows={Object.entries(data.service_type_mix)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([k, v]) => ({
+                          label: SERVICE_TYPE_LABELS[k] ?? k,
+                          value: v,
+                          meta: "",
+                          valueLabel: String(v),
+                        }))}
+                    />
+                  </ChartCard>
+                )}
+              </div>
+            )}
+
             {/* Tickets per day + Status breakdown */}
             <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
               <ChartCard title="Tickets per day" subtitle="Created vs. Resolved" className="lg:col-span-2">
@@ -184,7 +288,7 @@ export default function AnalyticsPage() {
 
             {/* Product mix */}
             <div className="mt-6">
-              <ChartCard title="Tickets by product category" subtitle={`Total · avg resolution hours · last ${days}d`}>
+              <ChartCard title="Tickets by product category" subtitle={`Total · warranty split · avg resolution hours · last ${days}d`}>
                 <ProductTable rows={data.product_breakdown} />
               </ChartCard>
             </div>
@@ -483,12 +587,21 @@ function EngineerTable({
 function ProductTable({
   rows,
 }: {
-  rows: { product_category: string; total: number; resolved: number; avg_hours: number }[];
+  rows: {
+    product_category: string;
+    total: number;
+    resolved: number;
+    avg_hours: number;
+    under_warranty?: number;
+    out_of_warranty?: number;
+  }[];
 }) {
   if (rows.length === 0) {
     return <div className="py-6 text-center text-[13px] text-ink-subtle">No products tracked yet.</div>;
   }
   const maxTotal = Math.max(1, ...rows.map((r) => r.total));
+  // Older backend payloads lack the warranty split — hide the columns then.
+  const hasWarranty = rows.some((r) => r.under_warranty !== undefined);
   return (
     <table className="w-full text-left text-[12.5px]">
       <thead>
@@ -496,6 +609,12 @@ function ProductTable({
           <th className="py-2 font-medium">Product</th>
           <th className="py-2 font-medium">Volume</th>
           <th className="py-2 text-right font-medium">Total</th>
+          {hasWarranty && (
+            <>
+              <th className="py-2 text-right font-medium" title="Under warranty / AMC excluded">In war.</th>
+              <th className="py-2 text-right font-medium">Out war.</th>
+            </>
+          )}
           <th className="py-2 text-right font-medium">Resolved</th>
           <th className="py-2 text-right font-medium">Avg hrs</th>
         </tr>
@@ -513,6 +632,12 @@ function ProductTable({
               </div>
             </td>
             <td className="py-2.5 text-right tabular-nums">{r.total}</td>
+            {hasWarranty && (
+              <>
+                <td className="py-2.5 text-right tabular-nums text-emerald-700">{r.under_warranty ?? 0}</td>
+                <td className="py-2.5 text-right tabular-nums text-amber-700">{r.out_of_warranty ?? 0}</td>
+              </>
+            )}
             <td className="py-2.5 text-right tabular-nums">{r.resolved}</td>
             <td className="py-2.5 text-right tabular-nums">{r.avg_hours.toFixed(1)}</td>
           </tr>
