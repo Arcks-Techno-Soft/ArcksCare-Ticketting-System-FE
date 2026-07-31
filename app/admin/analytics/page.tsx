@@ -40,6 +40,9 @@ type Analytics = {
     name: string;
     assigned: number;
     resolved: number;
+    // Installation workload (optional: older backend payloads lack it).
+    installs_assigned?: number;
+    installs_completed?: number;
     avg_hours: number;
     completion_rate: number;
   }[];
@@ -56,7 +59,73 @@ type Analytics = {
   };
   warranty_mix?: Record<string, number>;
   service_type_mix?: Record<string, number>;
+  // Deep-analytics blocks (all optional — page renders against older payloads).
+  sla_stages?: {
+    stage: number;
+    label: string;
+    avg_min: number | null;
+    breach_rate: number | null;
+    measured: number;
+  }[];
+  backlog_aging?: Record<string, number>;
+  holds?: {
+    reference: string;
+    business_name: string;
+    status: string;
+    reason: string | null;
+    days_on_hold: number;
+  }[];
+  installations?: {
+    kpis: {
+      window_created: number;
+      window_completed: number;
+      open_now: number;
+      on_hold: number;
+      closed_total: number;
+      avg_assign_to_complete_hours: number;
+      avg_create_to_complete_hours: number;
+      overdue_open: number;
+    };
+    expected_date: {
+      on_time: number;
+      late: number;
+      overdue_open: number;
+      upcoming: number;
+      no_date: number;
+    };
+    per_day: { date: string; created: number; completed: number }[];
+    by_status: Record<string, number>;
+    backlog_aging: Record<string, number>;
+    holds: {
+      reference: string;
+      business_name: string;
+      status: string;
+      reason: string | null;
+      days_on_hold: number;
+    }[];
+    engineer_performance: {
+      engineer_id: number;
+      name: string;
+      assigned: number;
+      completed: number;
+      avg_hours: number;
+      completion_rate: number;
+    }[];
+    category_breakdown: { category: string; total: number }[];
+  };
+  repeat_businesses?: {
+    business_name: string;
+    tickets: number;
+    open_now: number;
+    top_product: string;
+  }[];
 };
+
+const AGING_ORDER = ["0-2d", "3-7d", "8-14d", "15d+"];
+
+/** Minutes → a compact human figure ("42 min" / "7.6 h"). */
+const fmtMin = (m: number | null) =>
+  m === null ? "—" : m < 90 ? `${Math.round(m)} min` : `${(m / 60).toFixed(1)} h`;
 
 const WARRANTY_LABELS: Record<string, string> = {
   UNDER_WARRANTY: "Under warranty",
@@ -91,6 +160,10 @@ export default function AnalyticsPage() {
   const router = useRouter();
   const { ready, user, authFetch } = useAuth();
   const [days, setDays] = useState(30);
+  // Tickets and installations are separate operations with separate questions,
+  // so the page shows one at a time rather than interleaving them. One payload
+  // serves both — the toggle is purely client-side, no refetch.
+  const [view, setView] = useState<"tickets" | "installations">("tickets");
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,8 +208,28 @@ export default function AnalyticsPage() {
               Service performance
             </h1>
             <p className="mt-1 text-[13.5px] text-ink-muted">
-              Trends across the last {days} days · open count is a live snapshot
+              {view === "tickets" ? "Service calls" : "Installations"} · last {days} days · open
+              counts are a live snapshot
             </p>
+
+            {/* Tickets / Installations toggle */}
+            <div className="mt-4 inline-flex rounded-full border border-line bg-white p-0.5">
+              {(["tickets", "installations"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  aria-pressed={view === v}
+                  className={`rounded-full px-4 py-1.5 text-[13px] transition-colors ${
+                    view === v
+                      ? "bg-ink text-white"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {v === "tickets" ? "Service calls" : "Installations"}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -167,6 +260,15 @@ export default function AnalyticsPage() {
           <div className="mt-10 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-[13.5px] text-red-700">
             {error}
           </div>
+        ) : data && view === "installations" ? (
+          data.installations ? (
+            <InstallationsView data={data.installations} days={days} />
+          ) : (
+            <div className="mt-10 rounded-lg border border-line bg-surface-raised px-5 py-4 text-[13.5px] text-ink-muted">
+              Installation analytics need a newer backend — the current API
+              response doesn&apos;t include them yet.
+            </div>
+          )
         ) : data ? (
           <>
             {/* KPI cards */}
@@ -247,6 +349,116 @@ export default function AnalyticsPage() {
               </div>
             )}
 
+            {/* Response time & SLA + backlog aging */}
+            {(data.sla_stages || data.backlog_aging) && (
+              <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {data.sla_stages && (
+                  <ChartCard
+                    title="Response time & SLA"
+                    subtitle={`Created · last ${days}d — thresholds match the Reports page; hold time not subtracted here`}
+                  >
+                    <table className="w-full text-left text-[12.5px]">
+                      <thead>
+                        <tr className="text-[10.5px] uppercase tracking-[0.12em] text-ink-subtle">
+                          <th className="py-2 font-medium">Stage</th>
+                          <th className="py-2 text-right font-medium">Avg</th>
+                          <th className="py-2 text-right font-medium">Breached</th>
+                          <th className="py-2 text-right font-medium">Measured</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line">
+                        {data.sla_stages.map((s) => (
+                          <tr key={s.stage}>
+                            <td className="py-2.5 text-ink">{s.label}</td>
+                            <td className="py-2.5 text-right tabular-nums">{fmtMin(s.avg_min)}</td>
+                            <td className="py-2.5 text-right">
+                              {s.breach_rate === null ? (
+                                <span className="text-ink-subtle">—</span>
+                              ) : (
+                                <span
+                                  className={`tabular-nums ${
+                                    s.breach_rate >= 40
+                                      ? "text-accent-danger"
+                                      : s.breach_rate >= 20
+                                        ? "text-amber-700"
+                                        : "text-emerald-700"
+                                  }`}
+                                >
+                                  {s.breach_rate.toFixed(1)}%
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 text-right tabular-nums text-ink-subtle">{s.measured}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </ChartCard>
+                )}
+                {data.backlog_aging && (
+                  <ChartCard
+                    title="Backlog aging"
+                    subtitle="Live open tickets by age — right now, not the window"
+                  >
+                    <HorizontalBars
+                      rows={AGING_ORDER.map((k) => ({
+                        label: k,
+                        value: data.backlog_aging?.[k] ?? 0,
+                        meta: "",
+                        valueLabel: String(data.backlog_aging?.[k] ?? 0),
+                      }))}
+                    />
+                  </ChartCard>
+                )}
+              </div>
+            )}
+
+            {/* Current holds */}
+            {data.holds && (
+              <div className="mt-6">
+                <ChartCard title="On hold right now" subtitle="Longest parked first">
+                  <HoldsList rows={data.holds} emptyText="No service calls are on hold." />
+                </ChartCard>
+              </div>
+            )}
+
+            {/* Repeat businesses */}
+            {data.repeat_businesses && data.repeat_businesses.length > 0 && (
+              <div className="mt-6">
+                <ChartCard
+                  title="Repeat businesses"
+                  subtitle={`2+ tickets · last ${days}d — several tickets from one site is rarely coincidence`}
+                >
+                  <table className="w-full text-left text-[12.5px]">
+                    <thead>
+                      <tr className="text-[10.5px] uppercase tracking-[0.12em] text-ink-subtle">
+                        <th className="py-2 font-medium">Business</th>
+                        <th className="py-2 font-medium">Most-ticketed product</th>
+                        <th className="py-2 text-right font-medium">Tickets</th>
+                        <th className="py-2 text-right font-medium">Open now</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {data.repeat_businesses.map((b) => (
+                        <tr key={b.business_name}>
+                          <td className="py-2.5 text-ink">{b.business_name}</td>
+                          <td className="py-2.5 text-ink-muted">{b.top_product}</td>
+                          <td className="py-2.5 text-right tabular-nums">{b.tickets}</td>
+                          <td className="py-2.5 text-right tabular-nums">
+                            {b.open_now > 0 ? (
+                              <span className="text-amber-700">{b.open_now}</span>
+                            ) : (
+                              <span className="text-ink-subtle">0</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ChartCard>
+              </div>
+            )}
+
             {/* Tickets per day + Status breakdown */}
             <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
               <ChartCard title="Tickets per day" subtitle="Created vs. Resolved" className="lg:col-span-2">
@@ -311,6 +523,188 @@ function KpiCard({ label, value, hint }: { label: string; value: number | string
       <p className="mt-1.5 text-[26px] font-semibold tabular-nums tracking-tight text-ink">{value}</p>
       {hint && <p className="mt-1 text-[12px] text-ink-subtle">{hint}</p>}
     </div>
+  );
+}
+
+type HoldRow = {
+  reference: string;
+  business_name: string;
+  status: string;
+  reason: string | null;
+  days_on_hold: number;
+};
+
+/** Parked jobs, longest first — shared by the service-call and installation views. */
+function HoldsList({ rows, emptyText }: { rows: HoldRow[]; emptyText: string }) {
+  if (rows.length === 0) {
+    return <div className="py-6 text-center text-[13px] text-ink-subtle">{emptyText}</div>;
+  }
+  return (
+    <ul className="divide-y divide-line">
+      {rows.map((h) => (
+        <li key={h.reference} className="flex items-baseline justify-between gap-3 py-2.5">
+          <div className="min-w-0">
+            <span className="font-mono text-[12px] text-ink">{h.reference}</span>
+            <span className="ml-2 text-[12.5px] text-ink-muted">{h.business_name}</span>
+            <div className="truncate text-[12px] font-medium text-amber-700">
+              {h.reason ?? "No reason given"}
+            </div>
+          </div>
+          <span className="shrink-0 tabular-nums text-[12.5px] text-ink-subtle">
+            {h.days_on_hold.toFixed(1)}d
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const INSTALL_STATUS_LABELS: Record<string, string> = {
+  NEW: "New",
+  ASSIGNED: "Assigned",
+  COMPLETED: "Completed",
+  CLOSED: "Closed",
+};
+const INSTALL_STATUS_ORDER = ["NEW", "ASSIGNED", "COMPLETED", "CLOSED"];
+
+/** The Installations half of the page — mirrors the service-call blocks so a
+ *  manager reads the same shapes in both views. */
+function InstallationsView({
+  data,
+  days,
+}: {
+  data: NonNullable<Analytics["installations"]>;
+  days: number;
+}) {
+  const k = data.kpis;
+  const exp = data.expected_date;
+  const dated = exp.on_time + exp.late + exp.overdue_open + exp.upcoming;
+  return (
+    <>
+      <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <KpiCard label={`Created · ${days}d`} value={k.window_created} hint="New installations logged" />
+        <KpiCard label={`Completed · ${days}d`} value={k.window_completed} hint="Engineer marked done" />
+        <KpiCard label="Open now" value={k.open_now} hint="New/Assigned · excludes held · live" />
+        <KpiCard label="On hold" value={k.on_hold} hint="Parked — frozen and off the open count" />
+        <KpiCard
+          label="Avg assign → complete"
+          value={`${k.avg_assign_to_complete_hours.toFixed(1)} h`}
+          hint="Engineer's turnaround once assigned"
+        />
+        <KpiCard
+          label="Avg create → complete"
+          value={`${k.avg_create_to_complete_hours.toFixed(1)} h`}
+          hint="Total lead time the customer experiences"
+        />
+        <KpiCard
+          label="Overdue"
+          value={k.overdue_open}
+          hint="Past their expected date and still not done"
+        />
+        <KpiCard label="Closed (all time)" value={k.closed_total} hint="Signed off and archived" />
+      </div>
+
+      <div className="mt-6">
+        <ChartCard title="Installations per day" subtitle="Created vs. Completed">
+          <DualLineChart
+            series={data.per_day.map((d) => ({
+              date: d.date,
+              created: d.created,
+              resolved: d.completed,
+            }))}
+          />
+        </ChartCard>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard
+          title="Expected-date adherence"
+          subtitle={
+            dated === 0
+              ? `No expected dates set on the last ${days}d of installations yet`
+              : `${dated} of ${k.window_created} have a planned date · last ${days}d`
+          }
+        >
+          <HorizontalBars
+            rows={[
+              { label: "Completed on time", value: exp.on_time, meta: "", valueLabel: String(exp.on_time) },
+              { label: "Completed late", value: exp.late, meta: "", valueLabel: String(exp.late) },
+              { label: "Overdue, still open", value: exp.overdue_open, meta: "", valueLabel: String(exp.overdue_open) },
+              { label: "Upcoming", value: exp.upcoming, meta: "", valueLabel: String(exp.upcoming) },
+              { label: "No date set", value: exp.no_date, meta: "", valueLabel: String(exp.no_date) },
+            ]}
+          />
+        </ChartCard>
+
+        <ChartCard title="Status breakdown" subtitle={`Created · last ${days}d`}>
+          <HorizontalBars
+            rows={INSTALL_STATUS_ORDER.filter((s) => (data.by_status[s] ?? 0) > 0).map((s) => ({
+              label: INSTALL_STATUS_LABELS[s] ?? s,
+              value: data.by_status[s] ?? 0,
+              meta: "",
+              valueLabel: String(data.by_status[s] ?? 0),
+            }))}
+          />
+        </ChartCard>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard title="Backlog aging" subtitle="Live open installations by age — right now, not the window">
+          <HorizontalBars
+            rows={AGING_ORDER.map((a) => ({
+              label: a,
+              value: data.backlog_aging[a] ?? 0,
+              meta: "",
+              valueLabel: String(data.backlog_aging[a] ?? 0),
+            }))}
+          />
+        </ChartCard>
+
+        <ChartCard title="On hold right now" subtitle="Longest parked first">
+          <HoldsList rows={data.holds} emptyText="No installations are on hold." />
+        </ChartCard>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard title="Engineer performance" subtitle={`Assigned vs. completed · avg hours · last ${days}d`}>
+          <table className="w-full text-left text-[12.5px]">
+            <thead>
+              <tr className="text-[10.5px] uppercase tracking-[0.12em] text-ink-subtle">
+                <th className="py-2 font-medium">Engineer</th>
+                <th className="py-2 text-right font-medium">Assigned</th>
+                <th className="py-2 text-right font-medium">Completed</th>
+                <th className="py-2 text-right font-medium">Avg hrs</th>
+                <th className="py-2 text-right font-medium">Completion</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {data.engineer_performance.map((e) => (
+                <tr key={e.engineer_id}>
+                  <td className="py-2.5 text-ink">{e.name}</td>
+                  <td className="py-2.5 text-right tabular-nums">{e.assigned}</td>
+                  <td className="py-2.5 text-right tabular-nums">{e.completed}</td>
+                  <td className="py-2.5 text-right tabular-nums">{e.avg_hours.toFixed(1)}</td>
+                  <td className="py-2.5 text-right">
+                    <CompletionBadge pct={e.completion_rate} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ChartCard>
+
+        <ChartCard title="By business category" subtitle={`Installations created · last ${days}d`}>
+          <HorizontalBars
+            rows={data.category_breakdown.slice(0, 10).map((c) => ({
+              label: c.category,
+              value: c.total,
+              meta: "",
+              valueLabel: String(c.total),
+            }))}
+          />
+        </ChartCard>
+      </div>
+    </>
   );
 }
 
@@ -552,6 +946,8 @@ function EngineerTable({
     name: string;
     assigned: number;
     resolved: number;
+    installs_assigned?: number;
+    installs_completed?: number;
     avg_hours: number;
     completion_rate: number;
   }[];
@@ -559,6 +955,8 @@ function EngineerTable({
   if (rows.length === 0) {
     return <div className="py-6 text-center text-[13px] text-ink-subtle">No engineers yet.</div>;
   }
+  // Older backend payloads lack install counts — hide the column then.
+  const hasInstalls = rows.some((r) => r.installs_assigned !== undefined);
   return (
     <table className="w-full text-left text-[12.5px]">
       <thead>
@@ -566,6 +964,11 @@ function EngineerTable({
           <th className="py-2 font-medium">Engineer</th>
           <th className="py-2 text-right font-medium">Assigned</th>
           <th className="py-2 text-right font-medium">Resolved</th>
+          {hasInstalls && (
+            <th className="py-2 text-right font-medium" title="Installations assigned · completed">
+              Installs
+            </th>
+          )}
           <th className="py-2 text-right font-medium">Avg hrs</th>
           <th className="py-2 text-right font-medium">Completion</th>
         </tr>
@@ -576,6 +979,11 @@ function EngineerTable({
             <td className="py-2.5 text-ink">{r.name}</td>
             <td className="py-2.5 text-right tabular-nums">{r.assigned}</td>
             <td className="py-2.5 text-right tabular-nums">{r.resolved}</td>
+            {hasInstalls && (
+              <td className="py-2.5 text-right tabular-nums">
+                {r.installs_assigned ?? 0} · {r.installs_completed ?? 0}
+              </td>
+            )}
             <td className="py-2.5 text-right tabular-nums">{r.avg_hours.toFixed(1)}</td>
             <td className="py-2.5 text-right">
               <CompletionBadge pct={r.completion_rate} />
