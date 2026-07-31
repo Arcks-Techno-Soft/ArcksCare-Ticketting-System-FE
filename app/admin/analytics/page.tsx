@@ -164,6 +164,14 @@ export default function AnalyticsPage() {
   // so the page shows one at a time rather than interleaving them. One payload
   // serves both — the toggle is purely client-side, no refetch.
   const [view, setView] = useState<"tickets" | "installations">("tickets");
+  // Custom range. `range` is the APPLIED one (null = use the `days` preset);
+  // the drafts are what's typed in the picker before Apply, so half-entered
+  // dates never trigger a fetch.
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null);
+  const [showCustom, setShowCustom] = useState(false);
+  const [draftFrom, setDraftFrom] = useState("");
+  const [draftTo, setDraftTo] = useState("");
+  const [rangeError, setRangeError] = useState<string | null>(null);
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -177,12 +185,27 @@ export default function AnalyticsPage() {
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE_URL}/api/v1/admin/analytics?days=${days}`);
+      const qs = range
+        ? `date_from=${range.from}&date_to=${range.to}`
+        : `days=${days}`;
+      const res = await authFetch(`${API_BASE_URL}/api/v1/admin/analytics?${qs}`);
       if (res.status === 401) {
         router.replace("/admin/login");
         return;
       }
-      if (!res.ok) throw new Error(`Server ${res.status}`);
+      if (!res.ok) {
+        // The API rejects reversed or over-long ranges with a message worth showing.
+        const detail = await res
+          .json()
+          .then((b) => (typeof b?.detail === "string" ? b.detail : null))
+          .catch(() => null);
+        if (res.status === 400 && detail) {
+          setRangeError(detail);
+          return;
+        }
+        throw new Error(`Server ${res.status}`);
+      }
+      setRangeError(null);
       setData((await res.json()) as Analytics);
       setError(null);
     } catch (e) {
@@ -190,7 +213,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [authFetch, days, router]);
+  }, [authFetch, days, range, router]);
 
   useEffect(() => {
     if (isAdminLevel(user?.role) || user?.role === "MANAGER") fetchAnalytics();
@@ -208,8 +231,13 @@ export default function AnalyticsPage() {
               Service performance
             </h1>
             <p className="mt-1 text-[13.5px] text-ink-muted">
-              {view === "tickets" ? "Service calls" : "Installations"} · last {days} days · open
-              counts are a live snapshot
+              {view === "tickets" ? "Service calls" : "Installations"} ·{" "}
+              {range
+                ? `${fmtIstDateShort(range.from)} – ${fmtIstDateShort(range.to)}${
+                    data?.window_days ? ` (${data.window_days} days)` : ""
+                  }`
+                : `last ${days} days`}{" "}
+              · open counts are a live snapshot
             </p>
 
             {/* Tickets / Installations toggle */}
@@ -232,21 +260,85 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {[7, 30, 90, 365].map((d) => (
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              {[7, 30, 90, 365].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => {
+                    setRange(null);
+                    setShowCustom(false);
+                    setDays(d);
+                  }}
+                  className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${
+                    !range && days === d
+                      ? "border-ink bg-ink text-white"
+                      : "border-line bg-white text-ink hover:border-ink-soft"
+                  }`}
+                >
+                  {d === 365 ? "1y" : `${d}d`}
+                </button>
+              ))}
               <button
-                key={d}
                 type="button"
-                onClick={() => setDays(d)}
+                onClick={() => setShowCustom((v) => !v)}
+                aria-expanded={showCustom}
                 className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${
-                  days === d
+                  range
                     ? "border-ink bg-ink text-white"
                     : "border-line bg-white text-ink hover:border-ink-soft"
                 }`}
               >
-                {d === 365 ? "1y" : `${d}d`}
+                Custom
               </button>
-            ))}
+            </div>
+
+            {showCustom && (
+              <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl2 border border-line bg-white px-3 py-2">
+                <input
+                  type="date"
+                  value={draftFrom}
+                  max={draftTo || undefined}
+                  onChange={(e) => setDraftFrom(e.target.value)}
+                  className="rounded-lg border border-line px-2 py-1 text-[12.5px] text-ink focus:border-ink focus:outline-none"
+                />
+                <span className="text-[12.5px] text-ink-subtle">to</span>
+                <input
+                  type="date"
+                  value={draftTo}
+                  min={draftFrom || undefined}
+                  onChange={(e) => setDraftTo(e.target.value)}
+                  className="rounded-lg border border-line px-2 py-1 text-[12.5px] text-ink focus:border-ink focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!draftFrom || !draftTo || draftFrom > draftTo}
+                  onClick={() => {
+                    setRange({ from: draftFrom, to: draftTo });
+                    setShowCustom(false);
+                  }}
+                  className="rounded-full border border-ink bg-ink px-3 py-1 text-[12px] text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Apply
+                </button>
+                {range && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRange(null);
+                      setShowCustom(false);
+                    }}
+                    className="text-[12px] text-ink-subtle underline-offset-2 hover:text-ink hover:underline"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
+            {rangeError && (
+              <p className="text-[12px] text-accent-danger">{rangeError}</p>
+            )}
           </div>
         </div>
 
