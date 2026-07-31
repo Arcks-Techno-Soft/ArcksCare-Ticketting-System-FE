@@ -305,7 +305,10 @@ function KpiCard({ label, value, hint }: { label: string; value: number | string
   return (
     <div className="rounded-xl2 border border-line bg-white p-5 shadow-soft">
       <p className="text-[11.5px] uppercase tracking-[0.14em] text-ink-subtle">{label}</p>
-      <p className="mt-1.5 font-display text-3xl font-medium text-ink">{value}</p>
+      {/* Sans (Inter) with lining tabular figures — the display serif's
+          old-style numerals read slowly on stat cards. Headings keep the serif;
+          numbers don't. */}
+      <p className="mt-1.5 text-[26px] font-semibold tabular-nums tracking-tight text-ink">{value}</p>
       {hint && <p className="mt-1 text-[12px] text-ink-subtle">{hint}</p>}
     </div>
   );
