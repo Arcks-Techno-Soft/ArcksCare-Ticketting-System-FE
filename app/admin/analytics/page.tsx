@@ -40,6 +40,9 @@ type Analytics = {
     name: string;
     assigned: number;
     resolved: number;
+    // Installation workload (optional: older backend payloads lack it).
+    installs_assigned?: number;
+    installs_completed?: number;
     avg_hours: number;
     completion_rate: number;
   }[];
@@ -56,7 +59,42 @@ type Analytics = {
   };
   warranty_mix?: Record<string, number>;
   service_type_mix?: Record<string, number>;
+  // Deep-analytics blocks (all optional — page renders against older payloads).
+  sla_stages?: {
+    stage: number;
+    label: string;
+    avg_min: number | null;
+    breach_rate: number | null;
+    measured: number;
+  }[];
+  backlog_aging?: Record<string, number>;
+  holds?: {
+    reference: string;
+    business_name: string;
+    status: string;
+    reason: string | null;
+    days_on_hold: number;
+  }[];
+  installations?: {
+    window_created: number;
+    window_completed: number;
+    open_now: number;
+    on_hold: number;
+    avg_assign_to_complete_hours: number;
+  };
+  repeat_businesses?: {
+    business_name: string;
+    tickets: number;
+    open_now: number;
+    top_product: string;
+  }[];
 };
+
+const AGING_ORDER = ["0-2d", "3-7d", "8-14d", "15d+"];
+
+/** Minutes → a compact human figure ("42 min" / "7.6 h"). */
+const fmtMin = (m: number | null) =>
+  m === null ? "—" : m < 90 ? `${Math.round(m)} min` : `${(m / 60).toFixed(1)} h`;
 
 const WARRANTY_LABELS: Record<string, string> = {
   UNDER_WARRANTY: "Under warranty",
@@ -247,6 +285,153 @@ export default function AnalyticsPage() {
               </div>
             )}
 
+            {/* Response time & SLA + backlog aging */}
+            {(data.sla_stages || data.backlog_aging) && (
+              <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {data.sla_stages && (
+                  <ChartCard
+                    title="Response time & SLA"
+                    subtitle={`Created · last ${days}d — thresholds match the Reports page; hold time not subtracted here`}
+                  >
+                    <table className="w-full text-left text-[12.5px]">
+                      <thead>
+                        <tr className="text-[10.5px] uppercase tracking-[0.12em] text-ink-subtle">
+                          <th className="py-2 font-medium">Stage</th>
+                          <th className="py-2 text-right font-medium">Avg</th>
+                          <th className="py-2 text-right font-medium">Breached</th>
+                          <th className="py-2 text-right font-medium">Measured</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line">
+                        {data.sla_stages.map((s) => (
+                          <tr key={s.stage}>
+                            <td className="py-2.5 text-ink">{s.label}</td>
+                            <td className="py-2.5 text-right tabular-nums">{fmtMin(s.avg_min)}</td>
+                            <td className="py-2.5 text-right">
+                              {s.breach_rate === null ? (
+                                <span className="text-ink-subtle">—</span>
+                              ) : (
+                                <span
+                                  className={`tabular-nums ${
+                                    s.breach_rate >= 40
+                                      ? "text-accent-danger"
+                                      : s.breach_rate >= 20
+                                        ? "text-amber-700"
+                                        : "text-emerald-700"
+                                  }`}
+                                >
+                                  {s.breach_rate.toFixed(1)}%
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 text-right tabular-nums text-ink-subtle">{s.measured}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </ChartCard>
+                )}
+                {data.backlog_aging && (
+                  <ChartCard
+                    title="Backlog aging"
+                    subtitle="Live open tickets by age — right now, not the window"
+                  >
+                    <HorizontalBars
+                      rows={AGING_ORDER.map((k) => ({
+                        label: k,
+                        value: data.backlog_aging?.[k] ?? 0,
+                        meta: "",
+                        valueLabel: String(data.backlog_aging?.[k] ?? 0),
+                      }))}
+                    />
+                  </ChartCard>
+                )}
+              </div>
+            )}
+
+            {/* Current holds + installations */}
+            {(data.holds || data.installations) && (
+              <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {data.holds && (
+                  <ChartCard title="On hold right now" subtitle="Longest parked first">
+                    {data.holds.length === 0 ? (
+                      <div className="py-6 text-center text-[13px] text-ink-subtle">Nothing is on hold.</div>
+                    ) : (
+                      <ul className="divide-y divide-line">
+                        {data.holds.map((h) => (
+                          <li key={h.reference} className="flex items-baseline justify-between gap-3 py-2.5">
+                            <div className="min-w-0">
+                              <span className="font-mono text-[12px] text-ink">{h.reference}</span>
+                              <span className="ml-2 text-[12.5px] text-ink-muted">{h.business_name}</span>
+                              <div className="truncate text-[12px] font-medium text-amber-700">
+                                {h.reason ?? "No reason given"}
+                              </div>
+                            </div>
+                            <span className="shrink-0 tabular-nums text-[12.5px] text-ink-subtle">
+                              {h.days_on_hold.toFixed(1)}d
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </ChartCard>
+                )}
+                {data.installations && (
+                  <ChartCard title="Installations" subtitle={`Same ${days}d window · completion measured Assign → Complete`}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <MiniStat label={`Created · ${days}d`} value={data.installations.window_created} />
+                      <MiniStat label={`Completed · ${days}d`} value={data.installations.window_completed} />
+                      <MiniStat label="Open now" value={data.installations.open_now} />
+                      <MiniStat label="On hold" value={data.installations.on_hold} />
+                    </div>
+                    <p className="mt-4 border-t border-line pt-3 text-[12.5px] text-ink-muted">
+                      Avg assign → complete:{" "}
+                      <span className="font-semibold tabular-nums text-ink">
+                        {data.installations.avg_assign_to_complete_hours.toFixed(1)} h
+                      </span>
+                    </p>
+                  </ChartCard>
+                )}
+              </div>
+            )}
+
+            {/* Repeat businesses */}
+            {data.repeat_businesses && data.repeat_businesses.length > 0 && (
+              <div className="mt-6">
+                <ChartCard
+                  title="Repeat businesses"
+                  subtitle={`2+ tickets · last ${days}d — several tickets from one site is rarely coincidence`}
+                >
+                  <table className="w-full text-left text-[12.5px]">
+                    <thead>
+                      <tr className="text-[10.5px] uppercase tracking-[0.12em] text-ink-subtle">
+                        <th className="py-2 font-medium">Business</th>
+                        <th className="py-2 font-medium">Most-ticketed product</th>
+                        <th className="py-2 text-right font-medium">Tickets</th>
+                        <th className="py-2 text-right font-medium">Open now</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {data.repeat_businesses.map((b) => (
+                        <tr key={b.business_name}>
+                          <td className="py-2.5 text-ink">{b.business_name}</td>
+                          <td className="py-2.5 text-ink-muted">{b.top_product}</td>
+                          <td className="py-2.5 text-right tabular-nums">{b.tickets}</td>
+                          <td className="py-2.5 text-right tabular-nums">
+                            {b.open_now > 0 ? (
+                              <span className="text-amber-700">{b.open_now}</span>
+                            ) : (
+                              <span className="text-ink-subtle">0</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ChartCard>
+              </div>
+            )}
+
             {/* Tickets per day + Status breakdown */}
             <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
               <ChartCard title="Tickets per day" subtitle="Created vs. Resolved" className="lg:col-span-2">
@@ -310,6 +495,16 @@ function KpiCard({ label, value, hint }: { label: string; value: number | string
           numbers don't. */}
       <p className="mt-1.5 text-[26px] font-semibold tabular-nums tracking-tight text-ink">{value}</p>
       {hint && <p className="mt-1 text-[12px] text-ink-subtle">{hint}</p>}
+    </div>
+  );
+}
+
+/** Small stat used inside a ChartCard (the KPI cards are full tiles). */
+function MiniStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div>
+      <p className="text-[10.5px] uppercase tracking-[0.12em] text-ink-subtle">{label}</p>
+      <p className="mt-0.5 text-xl font-semibold tabular-nums text-ink">{value}</p>
     </div>
   );
 }
@@ -552,6 +747,8 @@ function EngineerTable({
     name: string;
     assigned: number;
     resolved: number;
+    installs_assigned?: number;
+    installs_completed?: number;
     avg_hours: number;
     completion_rate: number;
   }[];
@@ -559,6 +756,8 @@ function EngineerTable({
   if (rows.length === 0) {
     return <div className="py-6 text-center text-[13px] text-ink-subtle">No engineers yet.</div>;
   }
+  // Older backend payloads lack install counts — hide the column then.
+  const hasInstalls = rows.some((r) => r.installs_assigned !== undefined);
   return (
     <table className="w-full text-left text-[12.5px]">
       <thead>
@@ -566,6 +765,11 @@ function EngineerTable({
           <th className="py-2 font-medium">Engineer</th>
           <th className="py-2 text-right font-medium">Assigned</th>
           <th className="py-2 text-right font-medium">Resolved</th>
+          {hasInstalls && (
+            <th className="py-2 text-right font-medium" title="Installations assigned · completed">
+              Installs
+            </th>
+          )}
           <th className="py-2 text-right font-medium">Avg hrs</th>
           <th className="py-2 text-right font-medium">Completion</th>
         </tr>
@@ -576,6 +780,11 @@ function EngineerTable({
             <td className="py-2.5 text-ink">{r.name}</td>
             <td className="py-2.5 text-right tabular-nums">{r.assigned}</td>
             <td className="py-2.5 text-right tabular-nums">{r.resolved}</td>
+            {hasInstalls && (
+              <td className="py-2.5 text-right tabular-nums">
+                {r.installs_assigned ?? 0} · {r.installs_completed ?? 0}
+              </td>
+            )}
             <td className="py-2.5 text-right tabular-nums">{r.avg_hours.toFixed(1)}</td>
             <td className="py-2.5 text-right">
               <CompletionBadge pct={r.completion_rate} />
