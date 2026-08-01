@@ -446,7 +446,7 @@ export default function AnalyticsPage() {
                 <KpiCard
                   label="Outstanding"
                   value={inr(data.revenue.outstanding_inr)}
-                  hint="Due on finished work — excludes payments an Admin verified"
+                  hint="Resolved tickets awaiting collection — closed tickets excluded"
                   href={inboxHref(
                     { ...win, payment_state: "outstanding" },
                     "finished tickets with a balance still due"
