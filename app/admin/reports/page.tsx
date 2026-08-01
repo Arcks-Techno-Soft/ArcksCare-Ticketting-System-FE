@@ -91,6 +91,22 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Deep link from the analytics SLA table: ?date_from=&date_to=&stage=N
+  // narrows the report to tickets that breached that stage.
+  const [stageFilter, setStageFilter] = useState<number | null>(null);
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const f = p.get("date_from");
+    const t = p.get("date_to");
+    const s = p.get("stage");
+    if (f) setDateFrom(f);
+    if (t) setDateTo(t);
+    if (s && /^\d+$/.test(s)) {
+      setStageFilter(Number(s));
+      setEscalation(true); // breached-first ordering is the point of the link
+    }
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
@@ -138,15 +154,20 @@ export default function ReportsPage() {
   }, [data]);
 
   // Escalation ON → server order (breached first). OFF → newest-created first.
+  // `stageFilter` arrives from the analytics SLA table: show only the tickets
+  // that breached that one stage.
   const rows = useMemo(() => {
     if (!data) return [];
-    if (escalation) return data.rows;
-    return [...data.rows].sort((a, b) => {
+    const base = stageFilter
+      ? data.rows.filter((r) => r.breaches.some((b) => b.stage === stageFilter))
+      : data.rows;
+    if (escalation) return base;
+    return [...base].sort((a, b) => {
       const ta = a.created_at ? Date.parse(a.created_at) : 0;
       const tb = b.created_at ? Date.parse(b.created_at) : 0;
       return tb - ta;
     });
-  }, [data, escalation]);
+  }, [data, escalation, stageFilter]);
 
   const toggleRow = (ref: string) =>
     setExpanded((prev) => {
@@ -297,6 +318,27 @@ export default function ReportsPage() {
             </p>
           )}
         </div>
+
+        {/* Arrived from the analytics SLA table — say which stage is filtered. */}
+        {stageFilter !== null && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl2 border border-amber-300 bg-amber-50 px-4 py-2.5">
+            <span className="text-[13px] text-amber-900">
+              Showing only tickets that breached{" "}
+              <span className="font-medium">
+                {stageLabel.get(stageFilter) ?? `stage ${stageFilter}`}
+              </span>{" "}
+              — {rows.length} of{" "}
+              {data?.rows.length ?? 0}
+            </span>
+            <button
+              type="button"
+              onClick={() => setStageFilter(null)}
+              className="text-[12.5px] text-amber-800 underline-offset-2 hover:underline"
+            >
+              Show all stages
+            </button>
+          </div>
+        )}
 
         {loading && !data ? (
           <div className="mt-8 h-64 animate-pulse rounded-xl2 border border-line bg-surface-raised" />

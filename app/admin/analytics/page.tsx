@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { AdminShell } from "@/components/admin/admin-shell";
@@ -9,6 +10,11 @@ import { fmtIstDateShort } from "@/lib/format-date";
 
 type Analytics = {
   window_days: number;
+  // IST calendar bounds of the window, echoed by the API so drill-down links
+  // can hand the inbox the exact same cohort the tile counted.
+  window_from?: string;
+  window_to?: string;
+  window_custom?: boolean;
   kpis: {
     total_tickets: number;
     open_tickets: number;
@@ -144,6 +150,17 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
 /** ₹ with Indian digit grouping (1,23,456). */
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
+/** Build a deep link into the ticket inbox. `label` is echoed in the inbox's
+ *  banner so the user can see which slice they clicked through from. */
+function inboxHref(params: Record<string, string | number | undefined>, label: string) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") qs.set(k, String(v));
+  }
+  qs.set("label", label);
+  return `/admin/tickets?${qs.toString()}`;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   OPEN: "Open",
   ACKNOWLEDGED: "Acknowledged",
@@ -220,6 +237,14 @@ export default function AnalyticsPage() {
   }, [user, fetchAnalytics]);
 
   if (!ready || !user || (!isAdminLevel(user.role) && user.role !== "MANAGER")) return null;
+
+  // The window's IST bounds, spread into every drill-down link so the opened
+  // list holds exactly the tickets the tile counted. Falls back to the
+  // trailing-days param if an older backend omits the bounds.
+  const win: Record<string, string | number | undefined> =
+    data?.window_from && data?.window_to
+      ? { created_from: data.window_from, created_to: data.window_to }
+      : { created_within_days: days };
 
   return (
     <AdminShell>
@@ -363,16 +388,38 @@ export default function AnalyticsPage() {
           )
         ) : data ? (
           <>
-            {/* KPI cards */}
+            {/* KPI cards — every tile opens the tickets it counted. `win`
+                carries the window's IST bounds so the list matches the tile. */}
             <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-              <KpiCard label={`Tickets · ${days}d`} value={data.kpis.window_tickets} hint="Created within the window" />
-              <KpiCard label="Currently open" value={data.kpis.open_tickets} hint="Live · Open/Acked/Assigned/Resolving · excludes held" />
-              <KpiCard label="On hold" value={data.kpis.on_hold_tickets ?? 0} hint="Parked — frozen and off the open count" />
-              <KpiCard label={`Resolved · ${days}d`} value={data.kpis.window_resolved} hint="Of tickets created in window" />
+              <KpiCard
+                label={`Tickets · ${days}d`}
+                value={data.kpis.window_tickets}
+                hint="Created within the window"
+                href={inboxHref({ ...win }, `tickets created in the last ${days} days`)}
+              />
+              <KpiCard
+                label="Currently open"
+                value={data.kpis.open_tickets}
+                hint="Live · Open/Acked/Assigned/Resolving · excludes held"
+                href={inboxHref({ cohort: "open" }, "currently open tickets")}
+              />
+              <KpiCard
+                label="On hold"
+                value={data.kpis.on_hold_tickets ?? 0}
+                hint="Parked — frozen and off the open count"
+                href={inboxHref({ on_hold: "true" }, "tickets on hold")}
+              />
+              <KpiCard
+                label={`Resolved · ${days}d`}
+                value={data.kpis.window_resolved}
+                hint="Of tickets created in window"
+                href={inboxHref({ ...win, cohort: "resolved" }, `tickets resolved from the last ${days} days`)}
+              />
               <KpiCard
                 label="Avg resolution"
                 value={`${data.kpis.avg_resolution_hours.toFixed(1)} h`}
                 hint="Resolving → Resolved"
+                href={inboxHref({ ...win, cohort: "resolved" }, `resolved tickets behind the average`)}
               />
             </div>
 
@@ -388,21 +435,25 @@ export default function AnalyticsPage() {
                       ? `${data.revenue.tracked_tickets} payment-tracked tickets · ${data.revenue.untracked_tickets} legacy excluded`
                       : `${data.revenue.tracked_tickets} payment-tracked tickets`
                   }
+                  href={inboxHref({ ...win, payment_state: "tracked" }, "payment-tracked tickets")}
                 />
                 <KpiCard
                   label="Collected"
                   value={inr(data.revenue.collected_inr)}
                   hint={`${data.revenue.collection_rate.toFixed(1)}% of billed`}
+                  href={inboxHref({ ...win, payment_state: "collected" }, "tickets with money collected")}
                 />
                 <KpiCard
                   label="Outstanding"
                   value={inr(data.revenue.outstanding_inr)}
                   hint="Balance still due across the window's tickets"
+                  href={inboxHref({ ...win, payment_state: "outstanding" }, "tickets with a balance still due")}
                 />
                 <KpiCard
                   label="Awaiting verification"
                   value={data.revenue.awaiting_verification}
                   hint="Collected in full — needs an Admin to verify"
+                  href={inboxHref({ ...win, payment_state: "awaiting_verification" }, "tickets awaiting payment verification")}
                 />
               </div>
             )}
@@ -417,6 +468,10 @@ export default function AnalyticsPage() {
                         value: data.warranty_mix?.[k] ?? 0,
                         meta: "",
                         valueLabel: String(data.warranty_mix?.[k] ?? 0),
+                        href: inboxHref(
+                          { ...win, warranty_status: k },
+                          `${(WARRANTY_LABELS[k] ?? k).toLowerCase()} tickets`
+                        ),
                       }))}
                     />
                   </ChartCard>
@@ -434,6 +489,10 @@ export default function AnalyticsPage() {
                           value: v,
                           meta: "",
                           valueLabel: String(v),
+                          href: inboxHref(
+                            { ...win, service_type: k },
+                            `${(SERVICE_TYPE_LABELS[k] ?? k).toLowerCase()} tickets`
+                          ),
                         }))}
                     />
                   </ChartCard>
@@ -460,15 +519,26 @@ export default function AnalyticsPage() {
                       </thead>
                       <tbody className="divide-y divide-line">
                         {data.sla_stages.map((s) => (
-                          <tr key={s.stage}>
-                            <td className="py-2.5 text-ink">{s.label}</td>
+                          <tr key={s.stage} className="transition-colors hover:bg-surface-raised">
+                            <td className="py-2.5 text-ink">
+                              {/* Per-ticket SLA breaches live on the Reports
+                                  page, which already computes them — so a stage
+                                  drills through there, not to the inbox. */}
+                              <Link
+                                href={`/admin/reports?date_from=${data.window_from ?? ""}&date_to=${data.window_to ?? ""}&stage=${s.stage}`}
+                                className="hover:underline"
+                              >
+                                {s.label}
+                              </Link>
+                            </td>
                             <td className="py-2.5 text-right tabular-nums">{fmtMin(s.avg_min)}</td>
                             <td className="py-2.5 text-right">
                               {s.breach_rate === null ? (
                                 <span className="text-ink-subtle">—</span>
                               ) : (
-                                <span
-                                  className={`tabular-nums ${
+                                <Link
+                                  href={`/admin/reports?date_from=${data.window_from ?? ""}&date_to=${data.window_to ?? ""}&stage=${s.stage}`}
+                                  className={`tabular-nums hover:underline ${
                                     s.breach_rate >= 40
                                       ? "text-accent-danger"
                                       : s.breach_rate >= 20
@@ -477,7 +547,7 @@ export default function AnalyticsPage() {
                                   }`}
                                 >
                                   {s.breach_rate.toFixed(1)}%
-                                </span>
+                                </Link>
                               )}
                             </td>
                             <td className="py-2.5 text-right tabular-nums text-ink-subtle">{s.measured}</td>
@@ -498,6 +568,11 @@ export default function AnalyticsPage() {
                         value: data.backlog_aging?.[k] ?? 0,
                         meta: "",
                         valueLabel: String(data.backlog_aging?.[k] ?? 0),
+                        // Aging counts LIVE open tickets, so no window bounds here.
+                        href: inboxHref(
+                          { cohort: "open", age_bucket: k },
+                          `open tickets aged ${k}`
+                        ),
                       }))}
                     />
                   </ChartCard>
@@ -509,7 +584,11 @@ export default function AnalyticsPage() {
             {data.holds && (
               <div className="mt-6">
                 <ChartCard title="On hold right now" subtitle="Longest parked first">
-                  <HoldsList rows={data.holds} emptyText="No service calls are on hold." />
+                  <HoldsList
+                    rows={data.holds}
+                    emptyText="No service calls are on hold."
+                    hrefFor={(ref) => `/admin/tickets/${ref}`}
+                  />
                 </ChartCard>
               </div>
             )}
@@ -532,13 +611,31 @@ export default function AnalyticsPage() {
                     </thead>
                     <tbody className="divide-y divide-line">
                       {data.repeat_businesses.map((b) => (
-                        <tr key={b.business_name}>
-                          <td className="py-2.5 text-ink">{b.business_name}</td>
+                        <tr key={b.business_name} className="transition-colors hover:bg-surface-raised">
+                          <td className="py-2.5 text-ink">
+                            <Link
+                              href={inboxHref(
+                                { ...win, business_name: b.business_name },
+                                `tickets from ${b.business_name}`
+                              )}
+                              className="hover:underline"
+                            >
+                              {b.business_name}
+                            </Link>
+                          </td>
                           <td className="py-2.5 text-ink-muted">{b.top_product}</td>
                           <td className="py-2.5 text-right tabular-nums">{b.tickets}</td>
                           <td className="py-2.5 text-right tabular-nums">
                             {b.open_now > 0 ? (
-                              <span className="text-amber-700">{b.open_now}</span>
+                              <Link
+                                href={inboxHref(
+                                  { business_name: b.business_name, cohort: "open" },
+                                  `open tickets from ${b.business_name}`
+                                )}
+                                className="text-amber-700 hover:underline"
+                              >
+                                {b.open_now}
+                              </Link>
                             ) : (
                               <span className="text-ink-subtle">0</span>
                             )}
@@ -558,7 +655,15 @@ export default function AnalyticsPage() {
               </ChartCard>
 
               <ChartCard title="Status breakdown" subtitle={`Created · last ${days}d`}>
-                <StatusBars buckets={data.by_status} />
+                <StatusBars
+                  buckets={data.by_status}
+                  hrefFor={(s) =>
+                    inboxHref(
+                      { ...win, status: s },
+                      `${(STATUS_LABELS[s] ?? s).toLowerCase()} tickets from this window`
+                    )
+                  }
+                />
               </ChartCard>
             </div>
 
@@ -581,19 +686,34 @@ export default function AnalyticsPage() {
                     value: r.avg_hours,
                     meta: `${r.resolved_count} resolved`,
                     valueLabel: `${r.avg_hours.toFixed(1)} h`,
+                    href: inboxHref(
+                      { ...win, cohort: "resolved", issue_category: r.issue_category },
+                      `resolved "${r.issue_category}" tickets`
+                    ),
                   }))}
                 />
               </ChartCard>
 
               <ChartCard title="Engineer performance" subtitle={`Assigned vs. resolved · avg hours · last ${days}d`}>
-                <EngineerTable rows={data.engineer_performance} />
+                <EngineerTable
+                  rows={data.engineer_performance}
+                  hrefFor={(e) =>
+                    inboxHref(
+                      { ...win, assigned_engineer_id: e.engineer_id },
+                      `tickets assigned to ${e.name}`
+                    )
+                  }
+                />
               </ChartCard>
             </div>
 
             {/* Product mix */}
             <div className="mt-6">
               <ChartCard title="Tickets by product category" subtitle={`Total · warranty split · avg resolution hours · last ${days}d`}>
-                <ProductTable rows={data.product_breakdown} />
+                <ProductTable
+                  rows={data.product_breakdown}
+                  hrefFor={(p) => inboxHref({ ...win, product: p }, `${p} tickets`)}
+                />
               </ChartCard>
             </div>
           </>
@@ -605,16 +725,41 @@ export default function AnalyticsPage() {
 
 /* -------------------------- Layout helpers ---------------------------- */
 
-function KpiCard({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
-  return (
-    <div className="rounded-xl2 border border-line bg-white p-5 shadow-soft">
+function KpiCard({
+  label,
+  value,
+  hint,
+  href,
+}: {
+  label: string;
+  value: number | string;
+  hint?: string;
+  /** When set the whole tile becomes a link into the filtered ticket inbox. */
+  href?: string;
+}) {
+  const body = (
+    <>
       <p className="text-[11.5px] uppercase tracking-[0.14em] text-ink-subtle">{label}</p>
       {/* Sans (Inter) with lining tabular figures — the display serif's
           old-style numerals read slowly on stat cards. Headings keep the serif;
           numbers don't. */}
       <p className="mt-1.5 text-[26px] font-semibold tabular-nums tracking-tight text-ink">{value}</p>
       {hint && <p className="mt-1 text-[12px] text-ink-subtle">{hint}</p>}
-    </div>
+    </>
+  );
+  if (!href) {
+    return <div className="rounded-xl2 border border-line bg-white p-5 shadow-soft">{body}</div>;
+  }
+  return (
+    <Link
+      href={href}
+      className="group block rounded-xl2 border border-line bg-white p-5 shadow-soft transition-all hover:border-ink hover:shadow-lift focus:border-ink focus:outline-none"
+    >
+      {body}
+      <span className="mt-1.5 block text-[11.5px] text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100">
+        View tickets →
+      </span>
+    </Link>
   );
 }
 
@@ -626,27 +771,53 @@ type HoldRow = {
   days_on_hold: number;
 };
 
-/** Parked jobs, longest first — shared by the service-call and installation views. */
-function HoldsList({ rows, emptyText }: { rows: HoldRow[]; emptyText: string }) {
+/** Parked jobs, longest first — shared by the service-call and installation views.
+ *  Each row names one specific job, so it links straight to that job rather than
+ *  to a filtered list. */
+function HoldsList({
+  rows,
+  emptyText,
+  hrefFor,
+}: {
+  rows: HoldRow[];
+  emptyText: string;
+  hrefFor?: (reference: string) => string;
+}) {
   if (rows.length === 0) {
     return <div className="py-6 text-center text-[13px] text-ink-subtle">{emptyText}</div>;
   }
   return (
     <ul className="divide-y divide-line">
-      {rows.map((h) => (
-        <li key={h.reference} className="flex items-baseline justify-between gap-3 py-2.5">
-          <div className="min-w-0">
-            <span className="font-mono text-[12px] text-ink">{h.reference}</span>
-            <span className="ml-2 text-[12.5px] text-ink-muted">{h.business_name}</span>
-            <div className="truncate text-[12px] font-medium text-amber-700">
-              {h.reason ?? "No reason given"}
+      {rows.map((h) => {
+        const inner = (
+          <>
+            <div className="min-w-0">
+              <span className="font-mono text-[12px] text-ink">{h.reference}</span>
+              <span className="ml-2 text-[12.5px] text-ink-muted">{h.business_name}</span>
+              <div className="truncate text-[12px] font-medium text-amber-700">
+                {h.reason ?? "No reason given"}
+              </div>
             </div>
-          </div>
-          <span className="shrink-0 tabular-nums text-[12.5px] text-ink-subtle">
-            {h.days_on_hold.toFixed(1)}d
-          </span>
-        </li>
-      ))}
+            <span className="shrink-0 tabular-nums text-[12.5px] text-ink-subtle">
+              {h.days_on_hold.toFixed(1)}d
+            </span>
+          </>
+        );
+        return (
+          <li key={h.reference}>
+            {hrefFor ? (
+              <Link
+                href={hrefFor(h.reference)}
+                className="-mx-2 flex items-baseline justify-between gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-surface-raised"
+              >
+                {inner}
+              </Link>
+            ) : (
+              <div className="flex items-baseline justify-between gap-3 py-2.5">{inner}</div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -670,6 +841,8 @@ function InstallationsView({
 }) {
   const k = data.kpis;
   const exp = data.expected_date;
+  // Installations have their own list screen; drill-down there is a separate
+  // pass, so these tiles stay non-interactive for now.
   const dated = exp.on_time + exp.late + exp.overdue_open + exp.upcoming;
   return (
     <>
@@ -753,7 +926,11 @@ function InstallationsView({
         </ChartCard>
 
         <ChartCard title="On hold right now" subtitle="Longest parked first">
-          <HoldsList rows={data.holds} emptyText="No installations are on hold." />
+          <HoldsList
+            rows={data.holds}
+            emptyText="No installations are on hold."
+            hrefFor={(ref) => `/admin/installations/${ref}`}
+          />
         </ChartCard>
       </div>
 
@@ -974,15 +1151,21 @@ function TrendChart({ points }: { points: { date: string; avg_hours: number | nu
   );
 }
 
-function StatusBars({ buckets }: { buckets: Record<string, number> }) {
+function StatusBars({
+  buckets,
+  hrefFor,
+}: {
+  buckets: Record<string, number>;
+  hrefFor?: (status: string) => string;
+}) {
   const max = Math.max(1, ...Object.values(buckets));
   return (
     <div className="space-y-2">
       {STATUS_ORDER.map((s) => {
         const v = buckets[s] ?? 0;
         const pct = (v / max) * 100;
-        return (
-          <div key={s} className="flex items-center gap-3">
+        const inner = (
+          <>
             <span className="w-24 text-[12px] text-ink-muted">{STATUS_LABELS[s] ?? s}</span>
             <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-surface-raised">
               <div
@@ -991,6 +1174,19 @@ function StatusBars({ buckets }: { buckets: Record<string, number> }) {
               />
             </div>
             <span className="w-8 text-right text-[12.5px] font-medium text-ink">{v}</span>
+          </>
+        );
+        return hrefFor && v > 0 ? (
+          <Link
+            key={s}
+            href={hrefFor(s)}
+            className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-0.5 transition-colors hover:bg-surface-raised"
+          >
+            {inner}
+          </Link>
+        ) : (
+          <div key={s} className="flex items-center gap-3">
+            {inner}
           </div>
         );
       })}
@@ -1001,7 +1197,7 @@ function StatusBars({ buckets }: { buckets: Record<string, number> }) {
 function HorizontalBars({
   rows,
 }: {
-  rows: { label: string; value: number; valueLabel: string; meta?: string }[];
+  rows: { label: string; value: number; valueLabel: string; meta?: string; href?: string }[];
 }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   if (rows.length === 0) {
@@ -1011,8 +1207,8 @@ function HorizontalBars({
     <div className="space-y-3">
       {rows.map((r) => {
         const pct = (r.value / max) * 100;
-        return (
-          <div key={r.label}>
+        const inner = (
+          <>
             <div className="flex items-center justify-between text-[12.5px]">
               <span className="text-ink">{r.label}</span>
               <span className="text-ink-muted">
@@ -1021,9 +1217,21 @@ function HorizontalBars({
               </span>
             </div>
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-raised">
-              <div className="h-full rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+              <div className="h-full rounded-full bg-blue-500 transition-colors group-hover:bg-ink" style={{ width: `${pct}%` }} />
             </div>
-          </div>
+          </>
+        );
+        // A zero-value row has no tickets behind it, so it stays inert.
+        return r.href && r.value > 0 ? (
+          <Link
+            key={r.label}
+            href={r.href}
+            className="group -mx-2 block rounded-lg px-2 py-1 transition-colors hover:bg-surface-raised"
+          >
+            {inner}
+          </Link>
+        ) : (
+          <div key={r.label}>{inner}</div>
         );
       })}
     </div>
@@ -1032,6 +1240,7 @@ function HorizontalBars({
 
 function EngineerTable({
   rows,
+  hrefFor,
 }: {
   rows: {
     engineer_id: number;
@@ -1043,6 +1252,7 @@ function EngineerTable({
     avg_hours: number;
     completion_rate: number;
   }[];
+  hrefFor?: (row: { engineer_id: number; name: string }) => string;
 }) {
   if (rows.length === 0) {
     return <div className="py-6 text-center text-[13px] text-ink-subtle">No engineers yet.</div>;
@@ -1067,8 +1277,16 @@ function EngineerTable({
       </thead>
       <tbody className="divide-y divide-line">
         {rows.map((r) => (
-          <tr key={r.engineer_id}>
-            <td className="py-2.5 text-ink">{r.name}</td>
+          <tr key={r.engineer_id} className="transition-colors hover:bg-surface-raised">
+            <td className="py-2.5 text-ink">
+              {hrefFor ? (
+                <Link href={hrefFor(r)} className="hover:underline">
+                  {r.name}
+                </Link>
+              ) : (
+                r.name
+              )}
+            </td>
             <td className="py-2.5 text-right tabular-nums">{r.assigned}</td>
             <td className="py-2.5 text-right tabular-nums">{r.resolved}</td>
             {hasInstalls && (
@@ -1089,6 +1307,7 @@ function EngineerTable({
 
 function ProductTable({
   rows,
+  hrefFor,
 }: {
   rows: {
     product_category: string;
@@ -1098,6 +1317,7 @@ function ProductTable({
     under_warranty?: number;
     out_of_warranty?: number;
   }[];
+  hrefFor?: (product: string) => string;
 }) {
   if (rows.length === 0) {
     return <div className="py-6 text-center text-[13px] text-ink-subtle">No products tracked yet.</div>;
@@ -1124,8 +1344,16 @@ function ProductTable({
       </thead>
       <tbody className="divide-y divide-line">
         {rows.map((r) => (
-          <tr key={r.product_category}>
-            <td className="py-2.5 text-ink">{r.product_category}</td>
+          <tr key={r.product_category} className="transition-colors hover:bg-surface-raised">
+            <td className="py-2.5 text-ink">
+              {hrefFor ? (
+                <Link href={hrefFor(r.product_category)} className="hover:underline">
+                  {r.product_category}
+                </Link>
+              ) : (
+                r.product_category
+              )}
+            </td>
             <td className="py-2.5">
               <div className="h-2 w-32 overflow-hidden rounded-full bg-surface-raised">
                 <div
