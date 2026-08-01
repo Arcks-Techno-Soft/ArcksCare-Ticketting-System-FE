@@ -33,6 +33,20 @@ const AddressMap = dynamic(() => import("@/components/address-map"), {
   ),
 });
 
+/** Mirrors MAX_INVOICE_DOCUMENTS in the backend's installation_workflow. */
+const MAX_INVOICE_DOCS = 10;
+
+type InvoiceDoc = {
+  // null only on a legacy row the backend hasn't backfilled — such a row can't
+  // be deleted individually, so the UI falls back to "remove all".
+  id?: number | null;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  storage_url: string;
+  uploaded_at?: string | null;
+};
+
 type Installation = {
   id: number;
   reference: string;
@@ -46,13 +60,10 @@ type Installation = {
   // Bare calendar date (yyyy-mm-dd) the job is planned for, or null when it
   // hasn't been scheduled yet. Drives the upcoming-installation WhatsApp.
   expected_installation_date?: string | null;
-  invoice_document?: {
-    filename: string;
-    content_type: string;
-    size_bytes: number;
-    storage_url: string;
-    uploaded_at?: string | null;
-  } | null;
+  // Every attached invoice document. `invoice_document` is the most recent one,
+  // kept by the API for older clients — prefer the list.
+  invoice_documents?: InvoiceDoc[];
+  invoice_document?: InvoiceDoc | null;
   status: string;
   address_line1?: string | null;
   address_line2?: string | null;
@@ -623,14 +634,16 @@ export default function InstallationDetailPage() {
     if (ok) setEditingCustomer(false);
   };
 
-  const uploadInvoiceDoc = async (file: File) => {
+  const uploadInvoiceDocs = async (files: File[]) => {
+    if (!files.length) return;
     setError(null);
     setActing("invoice-doc");
     try {
       const fd = new FormData();
-      fd.append("file", file, file.name);
+      // Repeated `files` entries — FastAPI binds them to List[UploadFile].
+      for (const f of files) fd.append("files", f, f.name);
       const res = await authFetch(
-        `${API_BASE_URL}/api/v1/admin/installations/${reference}/invoice-document`,
+        `${API_BASE_URL}/api/v1/admin/installations/${reference}/invoice-documents`,
         { method: "POST", body: fd }
       );
       if (!res.ok) {
@@ -651,9 +664,14 @@ export default function InstallationDetailPage() {
     }
   };
 
-  const removeInvoiceDoc = async () => {
-    if (!confirm("Remove the invoice document?")) return;
-    await callAction("invoice-doc", "/invoice-document", "DELETE");
+  const removeInvoiceDoc = async (doc: InvoiceDoc) => {
+    if (!confirm(`Remove "${doc.filename}"?`)) return;
+    // A legacy row with no id can only be cleared via the all-documents route.
+    await callAction(
+      "invoice-doc",
+      doc.id == null ? "/invoice-document" : `/invoice-documents/${doc.id}`,
+      "DELETE"
+    );
   };
 
   const saveAddress = (payload: Record<string, unknown>) =>
@@ -921,56 +939,89 @@ export default function InstallationDetailPage() {
                 }
               />
               <Row
-                label="Invoice doc"
-                value={
-                  <div className="flex flex-col gap-2">
-                    {inst.invoice_document ? (
-                      <a
-                        href={inst.invoice_document.storage_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[13.5px] text-ink underline-offset-2 hover:underline"
-                      >
-                        <span aria-hidden>📄</span>
-                        <span className="truncate">{inst.invoice_document.filename}</span>
-                      </a>
-                    ) : (
-                      <span className="text-[13.5px] text-ink-subtle">No document</span>
-                    )}
-                    {canEditInvoice && (
-                      <div className="flex items-center gap-3">
-                        <label className="cursor-pointer text-[12.5px] font-medium text-ink underline-offset-2 hover:underline">
-                          {acting === "invoice-doc"
-                            ? "Uploading…"
-                            : inst.invoice_document
-                            ? "Replace"
-                            : "Upload"}
-                          <input
-                            type="file"
-                            accept="application/pdf,image/*"
-                            className="hidden"
-                            disabled={acting === "invoice-doc"}
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) uploadInvoiceDoc(f);
-                              e.target.value = "";
-                            }}
-                          />
-                        </label>
-                        {inst.invoice_document && (
-                          <button
-                            type="button"
-                            onClick={removeInvoiceDoc}
-                            disabled={acting === "invoice-doc"}
-                            className="text-[12.5px] font-medium text-red-700 underline-offset-2 hover:underline"
+                label="Invoice docs"
+                value={(() => {
+                  // Prefer the list; fall back to the singular field so this
+                  // still renders against a backend that predates multi-upload.
+                  const docs: InvoiceDoc[] =
+                    inst.invoice_documents ??
+                    (inst.invoice_document ? [inst.invoice_document] : []);
+                  const atCap = docs.length >= MAX_INVOICE_DOCS;
+                  return (
+                    <div className="flex flex-col gap-2">
+                      {docs.length ? (
+                        <ul className="flex flex-col gap-1.5">
+                          {docs.map((doc, i) => (
+                            <li
+                              key={doc.id ?? `${doc.storage_url}-${i}`}
+                              className="flex items-center gap-2"
+                            >
+                              <a
+                                href={doc.storage_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex min-w-0 items-center gap-1.5 text-[13.5px] text-ink underline-offset-2 hover:underline"
+                              >
+                                <span aria-hidden>📄</span>
+                                <span className="truncate">{doc.filename}</span>
+                              </a>
+                              <span className="shrink-0 text-[11.5px] text-ink-subtle">
+                                {(doc.size_bytes / 1024).toFixed(0)} KB
+                              </span>
+                              {canEditInvoice && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeInvoiceDoc(doc)}
+                                  disabled={acting === "invoice-doc"}
+                                  className="shrink-0 text-[12px] font-medium text-red-700 underline-offset-2 hover:underline"
+                                  aria-label={`Remove ${doc.filename}`}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="text-[13.5px] text-ink-subtle">No documents</span>
+                      )}
+                      {canEditInvoice && (
+                        <div className="flex items-center gap-3">
+                          <label
+                            className={`text-[12.5px] font-medium underline-offset-2 ${
+                              atCap
+                                ? "cursor-not-allowed text-ink-subtle"
+                                : "cursor-pointer text-ink hover:underline"
+                            }`}
                           >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                }
+                            {acting === "invoice-doc"
+                              ? "Uploading…"
+                              : docs.length
+                              ? "Add more"
+                              : "Upload"}
+                            <input
+                              type="file"
+                              multiple
+                              accept="application/pdf,image/*"
+                              className="hidden"
+                              disabled={acting === "invoice-doc" || atCap}
+                              onChange={(e) => {
+                                const picked = Array.from(e.target.files ?? []);
+                                if (picked.length) void uploadInvoiceDocs(picked);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                          <span className="text-[11.5px] text-ink-subtle">
+                            {atCap
+                              ? `Limit of ${MAX_INVOICE_DOCS} reached`
+                              : `${docs.length}/${MAX_INVOICE_DOCS} · PDF or image`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               />
             </DetailBlock>
 
