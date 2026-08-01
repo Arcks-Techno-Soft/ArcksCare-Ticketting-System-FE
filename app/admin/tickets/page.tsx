@@ -104,6 +104,14 @@ export default function AdminTicketsPage() {
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
 
   // Filters
+  // Drill-down filters arriving from the analytics dashboard via the URL.
+  // They live outside the inbox's own controls (there's no UI for warranty or
+  // payment state here) — a banner shows what's applied, with one click to
+  // clear. Read from window.location rather than useSearchParams so the page
+  // doesn't need a Suspense boundary at build time.
+  const [drill, setDrill] = useState<Record<string, string>>({});
+  const [drillLabel, setDrillLabel] = useState<string | null>(null);
+
   const [statusFilter, setStatusFilter] = useState("");
   // Hold is orthogonal to status, so it gets its own pill: "" = show all
   // (held rows included, badged), "held" / "live" narrow to one side.
@@ -152,19 +160,65 @@ export default function AdminTicketsPage() {
   // sitting on a page that no longer exists.
   useEffect(() => {
     setPage(0);
-  }, [statusFilter, holdFilter, debouncedSearch, sortBy, businessValue, engineerValue, pageSize]);
+  }, [statusFilter, holdFilter, debouncedSearch, sortBy, businessValue, engineerValue, pageSize, drill]);
 
   // Gate: redirect to login if not authed
   useEffect(() => {
     if (ready && !user) router.replace("/admin/login");
   }, [ready, user, router]);
 
+  // One-time read of analytics drill-down params from the URL.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const passthrough = [
+      "warranty_status",
+      "service_type",
+      "created_from",
+      "created_to",
+      "cohort",
+      "age_bucket",
+      "payment_state",
+      "business_name",
+      "assigned_engineer_id",
+      "product",
+      "severity",
+      "issue_category",
+    ];
+    const picked: Record<string, string> = {};
+    for (const k of passthrough) {
+      const v = p.get(k);
+      if (v) picked[k] = v;
+    }
+    // status / on_hold map onto the inbox's own controls so the pills reflect them.
+    const status = p.get("status");
+    if (status) setStatusFilter(status);
+    const held = p.get("on_hold");
+    if (held === "true") setHoldFilter("held");
+    else if (held === "false") setHoldFilter("live");
+    const q = p.get("search");
+    if (q) setSearch(q);
+
+    if (Object.keys(picked).length > 0) {
+      setDrill(picked);
+      setDrillLabel(p.get("label") || "Filtered from analytics");
+    }
+  }, []);
+
+  const clearDrill = useCallback(() => {
+    setDrill({});
+    setDrillLabel(null);
+    setStatusFilter("");
+    setHoldFilter("");
+    window.history.replaceState(null, "", "/admin/tickets");
+  }, []);
+
   const fetchTickets = useCallback(async () => {
     const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(drill)) qs.set(k, v);
     if (statusFilter) qs.set("status", statusFilter);
     if (holdFilter) {
       qs.set("on_hold", holdFilter === "held" ? "true" : "false");
-    } else if (statusFilter) {
+    } else if (statusFilter && !drill.cohort) {
       // A status pill counts live tickets only — held ones are counted under
       // "On hold" — so the list has to exclude them too, or "Resolving · 8"
       // would open a list of 10. Unfiltered ("All") still shows everything.
@@ -195,7 +249,7 @@ export default function AdminTicketsPage() {
     } finally {
       setInitialLoading(false);
     }
-  }, [authFetch, router, statusFilter, holdFilter, debouncedSearch, applySortParams, page, pageSize]);
+  }, [authFetch, router, statusFilter, holdFilter, debouncedSearch, applySortParams, page, pageSize, drill]);
 
   // Aggregate counts for the status pills. Note: the status filter is
   // intentionally NOT sent — every pill must show its count regardless of which
@@ -321,6 +375,23 @@ export default function AdminTicketsPage() {
               )}
             </p>
           </div>
+
+          {/* Analytics drill-down banner — shows which slice arrived from the
+              dashboard, since the inbox has no controls for warranty/payment. */}
+          {drillLabel && (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl2 border border-amber-300 bg-amber-50 px-4 py-2.5">
+              <span className="text-[13px] text-amber-900">
+                Showing <span className="font-medium">{drillLabel}</span> — from Analytics
+              </span>
+              <button
+                type="button"
+                onClick={clearDrill}
+                className="text-[12.5px] text-amber-800 underline-offset-2 hover:underline"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
 
           {/* Status pill counts */}
           <div className="flex flex-wrap items-center gap-2">
