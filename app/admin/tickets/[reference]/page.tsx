@@ -2289,9 +2289,12 @@ function ActionPanel(props: {
 
   // `payment_required` is computed by the backend (OOW, or covered + charges).
   // Out-of-warranty additionally requires a positive amount.
+  // CLOSED is included for post-close corrections: a Super Admin can edit
+  // charges after close, which re-opens the payment (PENDING) — the
+  // difference is collected here and then re-verified by an Admin.
   const paymentPending =
     !!ticket.payment_required &&
-    ticket.status === "RESOLVED" &&
+    (ticket.status === "RESOLVED" || ticket.status === "CLOSED") &&
     ticket.payment_status === "PENDING";
   // Collected in full but not yet verified by an Admin — this is what now holds
   // the ticket in RESOLVED. Falls back to deriving it for a pre-deploy backend.
