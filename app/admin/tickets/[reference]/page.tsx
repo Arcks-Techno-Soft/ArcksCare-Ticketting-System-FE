@@ -1092,7 +1092,22 @@ export default function TicketDetailPage() {
 
             <DetailBlock title="Product">
               <Row label="Category" value={ticket.product_category} />
-              <Row label="Serial number" value={<code className="font-mono text-[13.5px]">{ticket.serial_number}</code>} />
+              <Row
+                label="Serial number"
+                value={
+                  <SerialEditor
+                    serial={ticket.serial_number}
+                    // Narrower than canEditDetails: the serial decides which
+                    // device this is and which warranty applies, so the
+                    // assigned engineer can't change it — Manager and above.
+                    canEdit={canModerate && ticket.status !== "CLOSED"}
+                    busy={acting === "serial"}
+                    onSave={(serial_number) =>
+                      callAction("serial", "/serial", "PATCH", { serial_number })
+                    }
+                  />
+                }
+              />
             </DetailBlock>
 
             <DetailBlock title="Issue">
@@ -1545,6 +1560,84 @@ function DetailBlock({ title, children }: { title: string; children: React.React
       </div>
       <div className="divide-y divide-line/60">{children}</div>
     </div>
+  );
+}
+
+/** Serial number with an inline edit affordance for Manager and above.
+ *  Customers mistype serials at intake and the wrong serial means the wrong
+ *  warranty answer, so it stays correctable until the ticket is closed. */
+function SerialEditor({
+  serial,
+  canEdit,
+  busy,
+  onSave,
+}: {
+  serial: string;
+  canEdit: boolean;
+  busy: boolean;
+  onSave: (serial: string) => Promise<unknown> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(serial);
+
+  useEffect(() => {
+    // Keep the draft aligned when the ticket reloads after a save.
+    if (!editing) setDraft(serial);
+  }, [serial, editing]);
+
+  if (!editing) {
+    return (
+      <span className="flex items-center gap-2">
+        <code className="font-mono text-[13.5px]">{serial}</code>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-[12px] text-ink-subtle underline-offset-2 hover:text-ink hover:underline"
+          >
+            Edit
+          </button>
+        )}
+      </span>
+    );
+  }
+
+  const trimmed = draft.trim();
+  const dirty = trimmed.toUpperCase() !== serial.toUpperCase();
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        autoFocus
+        spellCheck={false}
+        className="w-52 rounded-lg border border-line px-2 py-1 font-mono text-[13px] uppercase text-ink focus:border-ink focus:outline-none"
+      />
+      <button
+        type="button"
+        disabled={busy || trimmed.length < 3 || !dirty}
+        onClick={async () => {
+          await onSave(trimmed);
+          setEditing(false);
+        }}
+        className="rounded-full border border-ink bg-ink px-3 py-1 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {busy ? "Saving…" : "Save"}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setDraft(serial);
+          setEditing(false);
+        }}
+        className="text-[12px] text-ink-subtle underline-offset-2 hover:text-ink hover:underline"
+      >
+        Cancel
+      </button>
+      {trimmed.length > 0 && trimmed.length < 3 && (
+        <span className="text-[11.5px] text-accent-danger">At least 3 characters</span>
+      )}
+    </span>
   );
 }
 
