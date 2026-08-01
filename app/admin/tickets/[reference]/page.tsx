@@ -2384,6 +2384,22 @@ function ActionPanel(props: {
         </h3>
       </div>
 
+      {/* Failures surface HERE, at the top — the panel is tall, and an error
+          rendered under the last section is invisible when the user clicked a
+          button near the top ("nothing happens"). */}
+      <AnimatePresence>
+        {actionError && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="rounded-md border border-accent-danger/30 bg-red-50 p-3 text-[12.5px] text-accent-danger"
+          >
+            {actionError}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {holdBanner}
 
       {canAcknowledge && (
@@ -3193,18 +3209,6 @@ function ActionPanel(props: {
         </div>
       )}
 
-      <AnimatePresence>
-        {actionError && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="rounded-md border border-accent-danger/30 bg-white p-3 text-[12.5px] text-accent-danger"
-          >
-            {actionError}
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
