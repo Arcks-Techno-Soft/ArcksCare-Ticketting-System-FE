@@ -399,6 +399,14 @@ export default function InstallationDetailPage() {
     await fetchAll();
   };
 
+  const handleDecline = async (reason: string) => {
+    const ok = await callAction("decline", "/decline", "POST", { reason });
+    // A declined installation is unassigned again — an engineer no longer
+    // sees it, so send them back to the list; moderators keep the page.
+    const moderator = user != null && (isAdminLevel(user.role) || user.role === "MANAGER");
+    if (ok && !moderator) router.replace("/admin/installations");
+  };
+
   const handleClose = () => {
     if (!confirm("Mark this installation as complete? You'll then capture both signatures.")) return;
     callAction("close", "/close");
@@ -1262,6 +1270,12 @@ export default function InstallationDetailPage() {
                         : "Start and end at least one attempt before finishing the installation."}
                     </p>
                   )}
+
+                  {/* Hand the job back — only before any recorded field work
+                      (mirrors the backend guard). */}
+                  {!onHold && attempts.length === 0 && (
+                    <InstallDeclineBox acting={acting} onDecline={handleDecline} />
+                  )}
                 </div>
               )}
 
@@ -1804,6 +1818,71 @@ function CopyableLink({ url }: { url: string }) {
       >
         {copied ? "Copied" : "Copy"}
       </button>
+    </div>
+  );
+}
+
+/** Inline decline: expands to a mandatory-reason box. The reason is what the
+ *  Admin/Manager notification and the audit trail show. */
+function InstallDeclineBox({
+  acting,
+  onDecline,
+}: {
+  acting: string | null;
+  onDecline: (reason: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setReason("");
+          setOpen(true);
+        }}
+        className="mt-3 w-full rounded-xl2 border border-amber-300 bg-amber-50 px-4 py-2 text-[13px] text-amber-800 transition-colors hover:border-amber-500"
+      >
+        Decline this installation…
+      </button>
+    );
+  }
+  const trimmed = reason.trim();
+  return (
+    <div className="mt-3 rounded-xl2 border border-amber-300 bg-amber-50 p-3">
+      <p className="text-[12.5px] text-amber-900">
+        The installation goes back to the managers to re-assign, and they&apos;ll
+        see your reason. You won&apos;t keep access unless it&apos;s re-assigned to you.
+      </p>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        placeholder="e.g. out of my district this week"
+        className="mt-2 w-full rounded-lg border border-line bg-white px-3 py-2 text-[13px] text-ink focus:border-ink focus:outline-none"
+      />
+      <div className="mt-2 flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="md"
+          onClick={() => setOpen(false)}
+          className="flex-1"
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          size="md"
+          loading={acting === "decline"}
+          disabled={trimmed.length < 3}
+          onClick={() => onDecline(trimmed)}
+          className="flex-1"
+        >
+          Decline installation
+        </Button>
+      </div>
     </div>
   );
 }

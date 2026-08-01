@@ -651,6 +651,15 @@ export default function TicketDetailPage() {
 
   const handleAccept = () => callAction("accept", "/accept");
   const handleStartWork = () => callAction("start", "/start-work");
+  const handleRollback = () => callAction("rollback", "/rollback");
+  const handleDecline = async (reason: string) => {
+    const ok = await callAction("decline", "/decline", "POST", { reason });
+    // A declined ticket is unassigned again. An engineer no longer sees it
+    // (fetchAll inside callAction may already have errored on scope), so send
+    // them back to their list; moderators stay on the page they can still see.
+    const moderator = user != null && (isAdminLevel(user.role) || user.role === "MANAGER");
+    if (ok && !moderator) router.replace("/admin/tickets");
+  };
   const handleResolve = async (serviceFeeInr: number) => {
     if (resolveSummary.trim().length < 10) {
       setActionError("Resolution summary must be at least 10 characters.");
@@ -1249,6 +1258,8 @@ export default function TicketDetailPage() {
               onSeverity={handleSeverity}
               onAccept={handleAccept}
               onStartWork={handleStartWork}
+              onDecline={handleDecline}
+              onRollback={handleRollback}
               onResolve={handleResolve}
               serviceFeeInr={charges?.service_fee_inr ?? 0}
               serviceFeeMinInr={charges?.service_fee_min_inr ?? 0}
@@ -1638,6 +1649,71 @@ function SerialEditor({
         <span className="text-[11.5px] text-accent-danger">At least 3 characters</span>
       )}
     </span>
+  );
+}
+
+/** Inline decline: expands to a mandatory-reason box. The reason is what the
+ *  Admin/Manager notification and the audit trail show. */
+function DeclineBox({
+  acting,
+  onDecline,
+}: {
+  acting: string | null;
+  onDecline: (reason: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setReason("");
+          setOpen(true);
+        }}
+        className="mt-3 w-full rounded-xl2 border border-amber-300 bg-amber-50 px-4 py-2 text-[13px] text-amber-800 transition-colors hover:border-amber-500"
+      >
+        Decline this ticket…
+      </button>
+    );
+  }
+  const trimmed = reason.trim();
+  return (
+    <div className="mt-3 rounded-xl2 border border-amber-300 bg-amber-50 p-3">
+      <p className="text-[12.5px] text-amber-900">
+        The ticket goes back to the managers to re-triage, and they&apos;ll see your
+        reason. You won&apos;t keep access unless it&apos;s re-assigned to you.
+      </p>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        placeholder="e.g. out of my district this week"
+        className="mt-2 w-full rounded-lg border border-line bg-white px-3 py-2 text-[13px] text-ink focus:border-ink focus:outline-none"
+      />
+      <div className="mt-2 flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="md"
+          onClick={() => setOpen(false)}
+          className="flex-1"
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          size="md"
+          loading={acting === "decline"}
+          disabled={trimmed.length < 3}
+          onClick={() => onDecline(trimmed)}
+          className="flex-1"
+        >
+          Decline ticket
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -2052,6 +2128,8 @@ function ActionPanel(props: {
   onSeverity: (next: string) => void;
   onAccept: () => void;
   onStartWork: () => void;
+  onDecline: (reason: string) => void;
+  onRollback: () => void;
   onResolve: (serviceFeeInr: number) => void;
   serviceFeeInr: number;
   serviceFeeMinInr: number;
@@ -2073,7 +2151,7 @@ function ActionPanel(props: {
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
     onHoldRequest, onResumeRequest,
     onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onThirdPartyInfo, onSeverity,
-    onAccept, onStartWork, onResolve, serviceFeeInr, serviceFeeMinInr,
+    onAccept, onStartWork, onDecline, onRollback, onResolve, serviceFeeInr, serviceFeeMinInr,
     onEngineerSign, onCustomerSign,
     onGenerateFieldLink, onDownloadPdf, onRegenPdf,
     defaultPaymentAmount, onCollectPayment, onVerifyPayment,
@@ -2460,6 +2538,7 @@ function ActionPanel(props: {
           <p className="mt-2 text-[12px] text-ink-subtle">
             Confirms you&apos;ve seen this assignment. You can then start work.
           </p>
+          <DeclineBox acting={acting} onDecline={onDecline} />
         </div>
       )}
 
@@ -2478,6 +2557,23 @@ function ActionPanel(props: {
           <p className="mt-2 text-[12px] text-ink-subtle">
             Moves the ticket to <strong>Resolving</strong>. Add work notes as you go.
           </p>
+          {/* Mistaken accept / change of plan — both undo and hand-back are
+              only possible before any recorded field work. */}
+          {(ticket.attempts ?? []).length === 0 && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="md"
+                loading={acting === "rollback"}
+                onClick={onRollback}
+                className="mt-3 w-full"
+              >
+                Undo accept
+              </Button>
+              <DeclineBox acting={acting} onDecline={onDecline} />
+            </>
+          )}
         </div>
       )}
 
@@ -2486,6 +2582,18 @@ function ActionPanel(props: {
           {openAttempt
             ? "End the open attempt in Work attempts below before resolving."
             : "Log at least one attempt in Work attempts below before resolving."}
+          {!openAttempt && (ticket.attempts ?? []).length === 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              loading={acting === "rollback"}
+              onClick={onRollback}
+              className="mt-3 w-full"
+            >
+              Undo start work
+            </Button>
+          )}
         </div>
       )}
 
