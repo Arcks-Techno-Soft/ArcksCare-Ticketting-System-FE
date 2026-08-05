@@ -180,6 +180,28 @@ type Shipment = {
 // blank intake default and warranty must be set (under / out / AMC) before a
 // ticket can be assigned to an engineer.
 const WARRANTY_OPTIONS = ["UNDER_WARRANTY", "OUT_OF_WARRANTY", "AMC"] as const;
+
+/** Result of POST /check-warranty. `found:false` means the serial isn't in the
+ *  registry; `requires_confirmation` means the verdict was NOT applied yet. */
+type WarrantyCheck = {
+  found: boolean;
+  serial_number: string;
+  verdict?: string | null;
+  current_status?: string | null;
+  applied: boolean;
+  requires_confirmation: boolean;
+  conflict_reason?: "AMC" | "DIFFERS" | null;
+  warranty?: {
+    product_name: string;
+    serial_number: string;
+    invoice_number?: string | null;
+    customer_name?: string | null;
+    sale_date?: string | null;
+    warranty_months?: number | null;
+    expiry_date?: string | null;
+  } | null;
+  message: string;
+};
 const SERVICE_TYPE_OPTIONS = [
   { value: "SITE_VISIT", label: "Site visit" },
   { value: "REMOTE_SUPPORT", label: "Remote support" },
@@ -624,6 +646,35 @@ export default function TicketDetailPage() {
 
   const handleWarranty = (next: string) =>
     callAction(`warranty-${next}`, "/warranty", "PATCH", { warranty_status: next });
+
+  // Warranty registry lookup. The server applies the verdict itself when that's
+  // unambiguous; when it would overturn an existing status (or an AMC) it comes
+  // back with requires_confirmation and we ask before re-sending confirm=true.
+  const [warrantyCheck, setWarrantyCheck] = useState<WarrantyCheck | null>(null);
+  const [checkingWarranty, setCheckingWarranty] = useState(false);
+
+  const handleCheckWarranty = async (confirm: boolean) => {
+    setActionError(null);
+    setCheckingWarranty(true);
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/api/v1/admin/tickets/${reference}/check-warranty`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm }),
+        }
+      );
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Request failed (${res.status})`);
+      setWarrantyCheck(body as WarrantyCheck);
+      if (body?.applied) await fetchAll();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Warranty check failed");
+    } finally {
+      setCheckingWarranty(false);
+    }
+  };
 
   const handleCollectPayment = (amount: number) =>
     callAction("collect-payment", "/collect-payment", "POST", {
@@ -1253,6 +1304,8 @@ export default function TicketDetailPage() {
               onAssign={handleAssign}
               onSelfAssign={handleSelfAssign}
               onWarranty={handleWarranty}
+              onCheckWarranty={handleCheckWarranty}
+              checkingWarranty={checkingWarranty}
               onServiceType={handleServiceType}
               onThirdPartyInfo={handleThirdPartyInfo}
               onSeverity={handleSeverity}
@@ -1410,6 +1463,13 @@ export default function TicketDetailPage() {
         onClose={() => setShipDialogOpen(false)}
         catalog={spareCatalog}
         onSubmit={handleShipParts}
+      />
+
+      <WarrantyCheckDialog
+        result={warrantyCheck}
+        busy={checkingWarranty}
+        onConfirm={() => void handleCheckWarranty(true)}
+        onClose={() => setWarrantyCheck(null)}
       />
 
       <CloseTicketDialog
@@ -2119,6 +2179,8 @@ function ActionPanel(props: {
   onAssign: () => void;
   onSelfAssign: () => void;
   onWarranty: (next: string) => void;
+  onCheckWarranty: (confirm: boolean) => void | Promise<void>;
+  checkingWarranty: boolean;
   onServiceType: (next: string) => void;
   onThirdPartyInfo: (payload: {
     third_party_device_name: string;
@@ -2150,7 +2212,7 @@ function ActionPanel(props: {
     salesReps, selectedSalesRepId, setSelectedSalesRepId, onSetSalesRep,
     resolveSummary, setResolveSummary, showResolveForm, setShowResolveForm,
     onHoldRequest, onResumeRequest,
-    onAcknowledge, onAssign, onSelfAssign, onWarranty, onServiceType, onThirdPartyInfo, onSeverity,
+    onAcknowledge, onAssign, onSelfAssign, onWarranty, onCheckWarranty, checkingWarranty, onServiceType, onThirdPartyInfo, onSeverity,
     onAccept, onStartWork, onDecline, onRollback, onResolve, serviceFeeInr, serviceFeeMinInr,
     onEngineerSign, onCustomerSign,
     onGenerateFieldLink, onDownloadPdf, onRegenPdf,
@@ -3098,6 +3160,21 @@ function ActionPanel(props: {
               );
             })}
           </div>
+          <button
+            type="button"
+            disabled={acting?.startsWith("warranty") || checkingWarranty}
+            onClick={() => void onCheckWarranty(false)}
+            className="mt-3 rounded-md border border-line bg-surface-sunken px-3 py-1.5 text-[12.5px]
+                       font-medium text-ink-muted transition-colors hover:border-ink-soft hover:text-ink
+                       disabled:opacity-50"
+          >
+            {checkingWarranty ? "Checking…" : "Check warranty status"}
+          </button>
+          <p className="mt-1.5 text-[12px] text-ink-subtle">
+            Looks up serial{" "}
+            <span className="font-medium text-ink-muted">{ticket.serial_number}</span> in the
+            warranty registry.
+          </p>
         </div>
       )}
 
@@ -3269,6 +3346,128 @@ function Timeline({ events }: { events: TicketEvent[] }) {
           ))
         )}
       </ol>
+    </div>
+  );
+}
+
+/** Result popup for "Check warranty status".
+ *
+ *  Three shapes: an unknown serial (error), a verdict already applied (plain
+ *  OK), or a verdict the server withheld because it would overturn an existing
+ *  status — that one gets Cancel/Apply rather than a single OK, since applying
+ *  changes what the customer is billed. */
+function WarrantyCheckDialog({
+  result,
+  busy,
+  onConfirm,
+  onClose,
+}: {
+  result: WarrantyCheck | null;
+  busy: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  if (!result) return null;
+  const notFound = !result.found;
+  const needsConfirm = result.requires_confirmation;
+  const inWarranty = result.verdict === "UNDER_WARRANTY";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.1em] ${
+              notFound
+                ? "bg-red-100 text-red-700"
+                : inWarranty
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-amber-100 text-amber-700"
+            }`}
+          >
+            {notFound ? "Invalid serial no." : inWarranty ? "Under warranty" : "Out of warranty"}
+          </span>
+        </div>
+
+        <p className="mt-3 whitespace-pre-line text-[13.5px] text-ink">
+          {notFound
+            ? `Serial "${result.serial_number}" isn't in the warranty registry. Check the number on the device, or register the unit under Warranty management.`
+            : result.message}
+        </p>
+
+        {result.warranty && (
+          <dl className="mt-3 space-y-1 rounded-lg bg-surface-sunken p-3 text-[12.5px]">
+            <div className="flex gap-2">
+              <dt className="w-24 shrink-0 text-ink-subtle">Product</dt>
+              <dd className="text-ink">{result.warranty.product_name}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-24 shrink-0 text-ink-subtle">Serial</dt>
+              <dd className="text-ink">{result.warranty.serial_number}</dd>
+            </div>
+            {result.warranty.sale_date && (
+              <div className="flex gap-2">
+                <dt className="w-24 shrink-0 text-ink-subtle">Invoice date</dt>
+                <dd className="text-ink">{result.warranty.sale_date}</dd>
+              </div>
+            )}
+            {result.warranty.expiry_date && (
+              <div className="flex gap-2">
+                <dt className="w-24 shrink-0 text-ink-subtle">Expires</dt>
+                <dd className="text-ink">
+                  {result.warranty.expiry_date}
+                  {result.warranty.warranty_months
+                    ? ` (${result.warranty.warranty_months} months)`
+                    : ""}
+                </dd>
+              </div>
+            )}
+            {result.warranty.customer_name && (
+              <div className="flex gap-2">
+                <dt className="w-24 shrink-0 text-ink-subtle">Sold to</dt>
+                <dd className="text-ink">{result.warranty.customer_name}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+
+        {result.applied && (
+          <p className="mt-3 text-[12.5px] text-emerald-700">
+            Warranty status updated on this ticket.
+          </p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          {needsConfirm ? (
+            <>
+              <Button type="button" variant="outline" size="md" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                loading={busy}
+                onClick={onConfirm}
+              >
+                Apply anyway
+              </Button>
+            </>
+          ) : (
+            <Button type="button" variant="primary" size="md" onClick={onClose}>
+              OK
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
