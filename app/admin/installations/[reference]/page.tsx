@@ -578,6 +578,18 @@ export default function InstallationDetailPage() {
     hasSubEngineer &&
     !customerSigned &&
     !engineerSigned;
+  // Whether the off-field signing section belongs on screen at all. Kept
+  // separate from canGenerateFieldLink so the section can explain what's
+  // missing instead of vanishing: hiding it outright made the feature look
+  // broken, since only a couple of installations ever meet every condition.
+  const fieldLinkRelevant =
+    (canModerate || isAssignee) && !customerSigned && !engineerSigned;
+  const fieldLinkBlockedReason =
+    inst.status !== "COMPLETED"
+      ? "Available once the installation is marked completed — the sign-off link is created with the resolution."
+      : !hasSubEngineer
+      ? "Add a sub-engineer above first — the link is what they use to sign on site."
+      : null;
   // Once generated, rebuild the shareable URL from the token so it always
   // points at this origin.
   const fieldSignUrl =
@@ -1319,7 +1331,7 @@ export default function InstallationDetailPage() {
 
               {/* Off-field signing — generate a link to send the sub-engineer,
                   who captures both signatures and installation photos on site. */}
-              {canGenerateFieldLink && !fieldMode && (
+              {fieldLinkRelevant && !fieldMode && (
                 <div className="mt-5 border-t border-line pt-5">
                   <p className="text-[11px] uppercase tracking-[0.16em] text-ink-subtle">
                     Off-field signing
@@ -1332,11 +1344,17 @@ export default function InstallationDetailPage() {
                   <Button
                     className="mt-3 w-full"
                     variant="outline"
+                    disabled={!!fieldLinkBlockedReason}
                     loading={acting === "field-link"}
                     onClick={handleGenerateFieldLink}
                   >
                     Generate sub-engineer signing link
                   </Button>
+                  {fieldLinkBlockedReason && (
+                    <p className="mt-2 text-[12.5px] text-amber-700">
+                      {fieldLinkBlockedReason}
+                    </p>
+                  )}
                 </div>
               )}
 
