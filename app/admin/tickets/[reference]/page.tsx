@@ -3486,6 +3486,10 @@ function labelForEvent(e: TicketEvent): string {
     case "WARRANTY_UPDATED":
       return `Warranty ${(e.payload as { from?: string; to?: string } | null)?.from} → ${(e.payload as { from?: string; to?: string } | null)?.to}`;
     case "ACCEPTED": return "Accepted by engineer";
+    case "DECLINED": {
+      const p = (e.payload as { reason?: string } | null) ?? {};
+      return p.reason ? `Declined by engineer — ${p.reason}` : "Declined by engineer";
+    }
     case "RESOLVING_STARTED": return "Started resolving";
     case "RESOLVED": return "Marked resolved";
     case "FIELD_SIGN_LINK_GENERATED": return "Remote signing link generated";

@@ -1792,6 +1792,10 @@ function labelForEvent(e: InstallEvent): string {
     case "CUSTOMER_SIGNED": return "Customer signed";
     case "ENGINEER_SIGNED": return "Engineer signed";
     case "CLOSED": return "Closed";
+    case "DECLINED": {
+      const p = (e.payload as { reason?: string } | null) ?? {};
+      return p.reason ? `Declined by engineer — ${p.reason}` : "Declined by engineer";
+    }
     case "HELD": {
       const p = (e.payload as { reason?: string } | null) ?? {};
       return p.reason ? `Put on hold — ${p.reason}` : "Put on hold";
