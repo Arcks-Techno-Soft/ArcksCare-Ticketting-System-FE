@@ -156,7 +156,7 @@ export function Spares({
   // --- pending-edit model: normalise drafts, detect changes, submit as a batch --
 
   // The service fee the draft would resolve to. Non-Admins are clamped to the
-  // minimum; a Super Admin (canWaiveBelowMin) may go all the way to ₹0.
+  // minimum; an Admin-level user (canWaiveBelowMin) may go all the way to ₹0.
   const feeFloor = canWaiveBelowMin ? 0 : charges.service_fee_min_inr;
   const feeNext = Math.max(feeFloor, parseInt(feeDraft || "0", 10) || 0);
   const feeChanged = feeNext !== charges.service_fee_inr;
