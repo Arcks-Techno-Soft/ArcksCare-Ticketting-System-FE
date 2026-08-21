@@ -66,10 +66,9 @@ export const ticketSchema = z.object({
   // Free-text category, required only when product_category === "Other". The
   // submit layer sends this value as the product_category when "Other" is picked.
   product_category_other: z.string().trim().max(60).optional().or(z.literal("")),
-  serial_number: z
-    .string()
-    .trim()
-    .min(3, "Enter the product serial number"),
+  // Optional at the field level: an "Other" product has no serial to read off
+  // a label. Required for every catalogue product — see the superRefine below.
+  serial_number: z.string().trim().max(120, "Serial number is too long").default(""),
 
   issue_category: z.enum(ISSUE_CATEGORIES, {
     errorMap: () => ({ message: "Select an issue category" }),
@@ -111,6 +110,15 @@ export const ticketSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["product_category_other"],
       message: "Please specify the product category",
+    });
+  }
+  // Every product we sell has a serial printed on it, so it stays required —
+  // except under "Other", where the device isn't ours and has none.
+  if (val.product_category !== "Other" && val.serial_number.trim().length < 3) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["serial_number"],
+      message: "Enter the product serial number",
     });
   }
   // An "Other" issue category must be typed out.

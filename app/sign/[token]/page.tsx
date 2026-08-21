@@ -179,7 +179,7 @@ export default function CustomerSignPage() {
           <div className="divide-y divide-line/60">
             <Section title="Product">
               <Row k="Category" v={doc.product_category} />
-              <Row k="Serial number" v={<code className="font-mono text-[13px]">{doc.serial_number}</code>} />
+              <Row k="Serial number" v={<code className="font-mono text-[13px]">{doc.serial_number || "—"}</code>} />
             </Section>
 
             <Section title="Issue reported">
