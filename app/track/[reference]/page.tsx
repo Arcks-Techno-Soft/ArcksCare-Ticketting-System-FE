@@ -223,7 +223,7 @@ export default async function TrackedTicketPage({
             </div>
             <div>
               <span className="text-ink-subtle">Serial:</span>{" "}
-              <span className="font-mono">{ticket.serial_number}</span>
+              <span className="font-mono">{ticket.serial_number || "—"}</span>
             </div>
             <div className="sm:col-span-2">
               <span className="text-ink-subtle">Issue:</span>{" "}

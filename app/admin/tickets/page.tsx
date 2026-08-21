@@ -584,7 +584,7 @@ export default function AdminTicketsPage() {
                     </Td>
                     <Td>
                       <div className="text-ink">{t.product_category}</div>
-                      <div className="font-mono text-[12px] text-ink-subtle">{t.serial_number}</div>
+                      <div className="font-mono text-[12px] text-ink-subtle">{t.serial_number || "—"}</div>
                     </Td>
                     <Td>
                       <span className="text-ink">{t.issue_category}</span>

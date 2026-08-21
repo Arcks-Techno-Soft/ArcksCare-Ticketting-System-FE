@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -83,6 +83,16 @@ export function TicketForm({
   const watched = watch();
   const lat = watched.latitude;
   const lng = watched.longitude;
+
+  // "Other" hides the serial field (that device isn't ours, so it has no serial
+  // we can track). Clear anything already typed so a hidden value can't ride
+  // along on submit, and re-validate to drop a stale "required" error.
+  const productIsOther = watched.product_category === "Other";
+  useEffect(() => {
+    if (productIsOther && watched.serial_number) {
+      setValue("serial_number", "", { shouldDirty: true, shouldValidate: true });
+    }
+  }, [productIsOther, watched.serial_number, setValue]);
 
   const businessNameField = register("business_name");
   const businessNameAc = useAutocomplete(
@@ -371,7 +381,11 @@ export function TicketForm({
       <Section
         index="03"
         title="Which device needs attention?"
-        caption="Your product's serial number is on a label on the back or underside."
+        caption={
+          productIsOther
+            ? "Tell us what the device is and we'll take it from there."
+            : "Your product's serial number is on a label on the back or underside."
+        }
       >
         <Grid>
           <FieldGroup>
@@ -396,20 +410,22 @@ export function TicketForm({
             )}
           </FieldGroup>
 
-          <FieldGroup>
-            <Label htmlFor="serial_number" required hint="Used to track your device">
-              Serial number
-            </Label>
-            <Input
-              id="serial_number"
-              placeholder="e.g. POSBK-2024-A1023"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              {...register("serial_number")}
-            />
-            <FieldError message={errors.serial_number?.message} />
-          </FieldGroup>
+          {!productIsOther && (
+            <FieldGroup>
+              <Label htmlFor="serial_number" required hint="Used to track your device">
+                Serial number
+              </Label>
+              <Input
+                id="serial_number"
+                placeholder="e.g. POSBK-2024-A1023"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                {...register("serial_number")}
+              />
+              <FieldError message={errors.serial_number?.message} />
+            </FieldGroup>
+          )}
         </Grid>
       </Section>
 

@@ -1659,14 +1659,20 @@ function SerialEditor({
   if (!editing) {
     return (
       <span className="flex items-center gap-2">
-        <code className="font-mono text-[13.5px]">{serial}</code>
+        {/* Blank under an "Other" product — that device isn't ours, so intake
+            never asked for a serial. Staff can still add one here. */}
+        {serial ? (
+          <code className="font-mono text-[13.5px]">{serial}</code>
+        ) : (
+          <span className="text-[13.5px] text-ink-subtle">Not provided</span>
+        )}
         {canEdit && (
           <button
             type="button"
             onClick={() => setEditing(true)}
             className="text-[12px] text-ink-subtle underline-offset-2 hover:text-ink hover:underline"
           >
-            Edit
+            {serial ? "Edit" : "Add"}
           </button>
         )}
       </span>
@@ -3158,9 +3164,13 @@ function ActionPanel(props: {
               );
             })}
           </div>
+          {/* Nothing to look up without a serial (an "Other" product doesn't
+              have one) — add the serial above first. */}
           <button
             type="button"
-            disabled={acting?.startsWith("warranty") || checkingWarranty}
+            disabled={
+              acting?.startsWith("warranty") || checkingWarranty || !ticket.serial_number
+            }
             onClick={() => void onCheckWarranty(false)}
             className="mt-3 rounded-md border border-line bg-surface-sunken px-3 py-1.5 text-[12.5px]
                        font-medium text-ink-muted transition-colors hover:border-ink-soft hover:text-ink
@@ -3169,9 +3179,15 @@ function ActionPanel(props: {
             {checkingWarranty ? "Checking…" : "Check warranty status"}
           </button>
           <p className="mt-1.5 text-[12px] text-ink-subtle">
-            Looks up serial{" "}
-            <span className="font-medium text-ink-muted">{ticket.serial_number}</span> in the
-            warranty registry.
+            {ticket.serial_number ? (
+              <>
+                Looks up serial{" "}
+                <span className="font-medium text-ink-muted">{ticket.serial_number}</span> in
+                the warranty registry.
+              </>
+            ) : (
+              <>This ticket has no serial number. Add one above to check the registry.</>
+            )}
           </p>
         </div>
       )}

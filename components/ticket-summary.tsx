@@ -107,10 +107,13 @@ export function TicketSummary({ values, attachments = [] }: Props) {
 
           <Block title="Product">
             <Row label="Category" value={values.product_category} />
+            {/* Blank only under an "Other" product, which has no serial —
+                drop the row rather than show an empty one. */}
             <Row
               label="Serial number"
               value={values.serial_number}
               mono
+              optional
             />
           </Block>
 
