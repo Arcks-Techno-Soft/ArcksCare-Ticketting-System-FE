@@ -716,12 +716,12 @@ export default function TicketDetailPage() {
       setActionError("Resolution summary must be at least 10 characters.");
       return;
     }
-    // Reject a below-minimum charge instead of silently accepting it — only a
-    // Super Admin may go below the floor.
+    // Reject a below-minimum charge instead of silently accepting it — only an
+    // Admin (or Super Admin) may go below the floor.
     const minFee = charges?.service_fee_min_inr ?? 0;
-    if (!isSuper && serviceFeeInr < minFee) {
+    if (!adminLevel && serviceFeeInr < minFee) {
       setActionError(
-        `Service charge can't be below ₹${minFee.toLocaleString("en-IN")} for this ticket. Only a Super Admin can set a lower amount.`
+        `Service charge can't be below ₹${minFee.toLocaleString("en-IN")} for this ticket. Only an Admin can set a lower amount.`
       );
       return;
     }
@@ -1075,8 +1075,9 @@ export default function TicketDetailPage() {
   const canModerate = isAdminLevel(user.role) || user.role === "MANAGER";
   // Admin-level = ADMIN or SUPER_ADMIN (general admin powers).
   const adminLevel = isAdminLevel(user.role);
-  // Super-admin holds the RESERVED powers: force-close, delete, waive below the
-  // service-fee minimum. Plain ADMINs must NOT have these.
+  // Super-admin holds the RESERVED powers: force-close, delete, and editing
+  // charges outside the RESOLVING window. Plain ADMINs must NOT have these.
+  // (Waiving below the service-fee minimum is Admin-level — see adminLevel.)
   const isSuper = isSuperAdmin(user.role);
   // Customer + address stay correctable by Admin/Manager or the assigned
   // engineer until the ticket is CLOSED (after which the record is signed off).
@@ -1284,7 +1285,6 @@ export default function TicketDetailPage() {
               currentUserRole={user.role}
               canModerate={canModerate}
               isAdmin={adminLevel}
-              isSuperAdmin={isSuper}
               hasUndeliveredShipments={shipments.some((s) => !s.delivered_at)}
               acting={acting}
               actionError={actionError}
@@ -1384,7 +1384,7 @@ export default function TicketDetailPage() {
                 acting === "charges-submit"
               }
               error={spareError}
-              canWaiveBelowMin={isSuper}
+              canWaiveBelowMin={adminLevel}
               onAdd={handleSpareAdd}
               onRemove={handleSpareRemove}
               onSubmitCharges={handleSubmitCharges}
@@ -2159,7 +2159,6 @@ function ActionPanel(props: {
   currentUserRole: string;
   canModerate: boolean;
   isAdmin: boolean;
-  isSuperAdmin: boolean;
   hasUndeliveredShipments: boolean;
   acting: string | null;
   actionError: string | null;
@@ -2206,7 +2205,6 @@ function ActionPanel(props: {
 }) {
   const {
     ticket, engineers, currentUserId, currentUserRole, canModerate, isAdmin,
-    isSuperAdmin,
     hasUndeliveredShipments,
     acting, actionError, selectedEngineerId, setSelectedEngineerId,
     salesReps, selectedSalesRepId, setSelectedSalesRepId, onSetSalesRep,
@@ -2713,7 +2711,7 @@ function ActionPanel(props: {
                 </label>
                 <input
                   type="number"
-                  min={isSuperAdmin ? 0 : serviceFeeMinInr}
+                  min={isAdmin ? 0 : serviceFeeMinInr}
                   value={resolveFeeDraft}
                   onChange={(e) => setResolveFeeDraft(e.target.value)}
                   className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-right text-[13.5px] text-ink
@@ -2722,7 +2720,7 @@ function ActionPanel(props: {
                 {serviceFeeMinInr > 0 && (
                   <p className="mt-1 text-[12px] text-ink-subtle">
                     Minimum ₹{serviceFeeMinInr.toLocaleString("en-IN")}
-                    {isSuperAdmin && " · you can set lower"}
+                    {isAdmin && " · you can set lower"}
                   </p>
                 )}
               </div>
