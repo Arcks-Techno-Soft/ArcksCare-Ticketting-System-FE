@@ -2,10 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
-
 import { AdminShell } from "@/components/admin/admin-shell";
-import { Input, Label, Select } from "@/components/ui/Field";
+import { Input, Label, PasswordInput, Select } from "@/components/ui/Field";
 import { useAuth, API_BASE_URL, isSuperAdmin } from "@/lib/auth";
 
 // Mirrors the backend's username validator: 3-50 chars, lowercase alnum
@@ -68,7 +66,6 @@ export default function UsersPage() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<(typeof ROLE_OPTIONS)[number]>("Engineer");
   const [district, setDistrict] = useState("");
   const [alsoSalesRep, setAlsoSalesRep] = useState(false);
@@ -174,7 +171,6 @@ export default function UsersPage() {
       setEmail("");
       setUsername("");
       setPassword("");
-      setShowPassword(false);
       setRole("Engineer");
       setDistrict("");
       setAlsoSalesRep(false);
@@ -317,26 +313,15 @@ export default function UsersPage() {
             </div>
             <div>
               <Label htmlFor="password" required>Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="new-password"
-                  minLength={PASSWORD_MIN}
-                  placeholder={`At least ${PASSWORD_MIN} characters`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute inset-y-0 right-3 flex items-center text-ink-subtle hover:text-ink"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
+              <PasswordInput
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+                minLength={PASSWORD_MIN}
+                placeholder={`At least ${PASSWORD_MIN} characters`}
+              />
               <p className="mt-1 text-[11.5px] text-ink-subtle">
                 Share this with the user out-of-band (Signal/WhatsApp, not email).
               </p>

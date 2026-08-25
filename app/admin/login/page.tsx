@@ -13,6 +13,7 @@ import {
   FieldGroup,
   Input,
   Label,
+  PasswordInput,
 } from "@/components/ui/Field";
 
 export default function AdminLoginPage() {
@@ -83,9 +84,8 @@ export default function AdminLoginPage() {
 
           <FieldGroup>
             <Label htmlFor="password" required>Password</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"

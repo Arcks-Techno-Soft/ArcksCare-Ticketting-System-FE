@@ -1,7 +1,9 @@
 "use client";
 
+import { Eye, EyeOff } from "lucide-react";
+
 import { cn } from "@/lib/utils";
-import { forwardRef, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { forwardRef, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes, useState } from "react";
 
 /* -------------------------------------------------------------------------- */
 /* Premium form primitives - white surface, near-black ink, refined motion.   */
@@ -35,6 +37,42 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     return <input ref={ref} className={cn(baseField, className)} {...rest} />;
   }
 );
+
+/**
+ * Password field with a reveal toggle. Behaves exactly like `Input` — the
+ * caller doesn't pass `type`; we flip between "password" and "text" from the
+ * eye button. Use this everywhere a password is typed so the toggle stays
+ * consistent across sign-in and user management.
+ */
+export const PasswordInput = forwardRef<
+  HTMLInputElement,
+  Omit<InputHTMLAttributes<HTMLInputElement>, "type">
+>(function PasswordInput({ className, ...rest }, ref) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="relative">
+      <input
+        ref={ref}
+        type={visible ? "text" : "password"}
+        className={cn(baseField, "pr-11", className)}
+        {...rest}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        // Keep it out of the tab order so Tab still goes straight from the
+        // password field to the submit button.
+        tabIndex={-1}
+        aria-label={visible ? "Hide password" : "Show password"}
+        aria-pressed={visible}
+        className="absolute inset-y-0 right-3 flex items-center text-ink-subtle transition-colors hover:text-ink"
+      >
+        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+});
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   function Textarea({ className, ...rest }, ref) {
