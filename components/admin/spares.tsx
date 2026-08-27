@@ -149,8 +149,8 @@ export function Spares({
   }
 
   const isWarranty = charges.is_warranty;
-  // Service fee has its own gate (Super Admins can edit past RESOLVED); the
-  // rest of the card (spares) stays on `canManage`.
+  // Service fee has its own gate (Admin-level users can edit past RESOLVED);
+  // the rest of the card (spares) stays on `canManage`.
   const feeEditable = canEditFee ?? canManage;
 
   // --- pending-edit model: normalise drafts, detect changes, submit as a batch --
@@ -363,9 +363,10 @@ export function Spares({
           />
         )}
 
-        {/* Service fee — always shown and editable while RESOLVING. Out-of-
-            warranty tickets carry a minimum (Remote ₹600, Site visit ₹800);
-            only an Admin may set below it. */}
+        {/* Service fee — always shown and editable while RESOLVING (and at any
+            status for an Admin-level user). Out-of-warranty tickets carry a
+            minimum (Remote ₹600, Site visit ₹800); only an Admin may set
+            below it. */}
         <div className="mt-2 flex items-center justify-between gap-3">
           <span className="text-[13px] text-ink-muted">Service fee</span>
           {feeEditable ? (

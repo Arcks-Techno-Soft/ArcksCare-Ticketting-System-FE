@@ -1075,9 +1075,10 @@ export default function TicketDetailPage() {
   const canModerate = isAdminLevel(user.role) || user.role === "MANAGER";
   // Admin-level = ADMIN or SUPER_ADMIN (general admin powers).
   const adminLevel = isAdminLevel(user.role);
-  // Super-admin holds the RESERVED powers: force-close, delete, and editing
-  // charges outside the RESOLVING window. Plain ADMINs must NOT have these.
-  // (Waiving below the service-fee minimum is Admin-level — see adminLevel.)
+  // Super-admin holds the RESERVED powers: force-close and delete. Plain
+  // ADMINs must NOT have these. (Waiving below the service-fee minimum AND
+  // editing charges outside the RESOLVING window are both Admin-level now —
+  // see adminLevel.)
   const isSuper = isSuperAdmin(user.role);
   // Customer + address stay correctable by Admin/Manager or the assigned
   // engineer until the ticket is CLOSED (after which the record is signed off).
@@ -1358,24 +1359,25 @@ export default function TicketDetailPage() {
               catalog={spareCatalog}
               remote={isRemote || isThirdParty}
               canManage={
-                // Spares freeze at RESOLVED for non-super-admins — the figures
-                // travel into the signed resolution PDF. A Super Admin may
-                // correct them at any status, including after the ticket is
-                // CLOSED (a post-close billing correction); the PDF re-renders.
-                isSuper ||
+                // Spares freeze at RESOLVED for Manager/engineer — the figures
+                // travel into the signed resolution PDF. An Admin-level user
+                // (Admin or Super Admin) may correct them at any status,
+                // including after the ticket is CLOSED (a post-close billing
+                // correction); the PDF re-renders. Mirrors the backend's
+                // _can_manage_charges.
+                adminLevel ||
                 (ticket.status === "RESOLVING" &&
-                  (isAdminLevel(user.role) ||
-                    user.role === "MANAGER" ||
+                  (user.role === "MANAGER" ||
                     ticket.assigned_engineer?.id === user.id))
               }
               canEditFee={
-                // A Super Admin may correct the service charge (incl. below the
-                // OOW minimum) at any status, including after CLOSED. Everyone
-                // else is held to the RESOLVING window.
-                isSuper ||
+                // An Admin-level user (Admin or Super Admin) may correct the
+                // service charge (incl. below the OOW minimum) at any status,
+                // including after CLOSED. Manager/engineer are held to the
+                // RESOLVING window.
+                adminLevel ||
                 (ticket.status === "RESOLVING" &&
-                  (isAdminLevel(user.role) ||
-                    user.role === "MANAGER" ||
+                  (user.role === "MANAGER" ||
                     ticket.assigned_engineer?.id === user.id))
               }
               busy={
