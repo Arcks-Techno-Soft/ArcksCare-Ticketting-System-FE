@@ -717,9 +717,12 @@ export default function TicketDetailPage() {
       return;
     }
     // Reject a below-minimum charge instead of silently accepting it — only an
-    // Admin (or Super Admin) may go below the floor.
+    // Admin (or Super Admin) may go below the floor. An unchanged fee is exempt:
+    // the saved value may be an Admin's waiver (the backend enforced the floor
+    // when it was set), and confirming it as-is sends no fee edit at all.
     const minFee = charges?.service_fee_min_inr ?? 0;
-    if (!adminLevel && serviceFeeInr < minFee) {
+    const feeChanged = charges != null && serviceFeeInr !== charges.service_fee_inr;
+    if (!adminLevel && feeChanged && serviceFeeInr < minFee) {
       setActionError(
         `Service charge can't be below ₹${minFee.toLocaleString("en-IN")} for this ticket. Only an Admin can set a lower amount.`
       );
