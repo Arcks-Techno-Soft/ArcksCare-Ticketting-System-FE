@@ -1078,10 +1078,10 @@ export default function TicketDetailPage() {
   const canModerate = isAdminLevel(user.role) || user.role === "MANAGER";
   // Admin-level = ADMIN or SUPER_ADMIN (general admin powers).
   const adminLevel = isAdminLevel(user.role);
-  // Super-admin holds the RESERVED powers: force-close and delete. Plain
-  // ADMINs must NOT have these. (Waiving below the service-fee minimum AND
-  // editing charges outside the RESOLVING window are both Admin-level now —
-  // see adminLevel.)
+  // Soft-delete is the last RESERVED super-admin power on this screen. Plain
+  // ADMINs must NOT have it. (Force-close became Admin-level on 2026-09-04, and
+  // waiving below the service-fee minimum AND editing charges outside the
+  // RESOLVING window are both Admin-level too — all three use adminLevel.)
   const isSuper = isSuperAdmin(user.role);
   // Customer + address stay correctable by Admin/Manager or the assigned
   // engineer until the ticket is CLOSED (after which the record is signed off).
@@ -1423,11 +1423,11 @@ export default function TicketDetailPage() {
                 error={coEngError}
               />
             )}
-            {/* Super-admin-only overrides (force-close + soft-delete). */}
-            {isSuper && (
+            {/* Admin-level force-close; soft-delete stays super-admin-only. */}
+            {adminLevel && (
               <div className="rounded-xl2 border border-red-200 bg-red-50/40 p-5">
                 <p className="text-[11px] uppercase tracking-[0.16em] text-red-600">
-                  Super Admin controls
+                  {isSuper ? "Super Admin controls" : "Admin controls"}
                 </p>
                 <div className="mt-3 space-y-2">
                   {ticket.status !== "CLOSED" && (
@@ -1441,19 +1441,23 @@ export default function TicketDetailPage() {
                       Close ticket
                     </Button>
                   )}
-                  <Button
-                    type="button"
-                    variant="danger"
-                    size="md"
-                    className="w-full"
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    Delete ticket
-                  </Button>
+                  {isSuper && (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="md"
+                      className="w-full"
+                      onClick={() => setDeleteOpen(true)}
+                    >
+                      Delete ticket
+                    </Button>
+                  )}
                 </div>
                 <p className="mt-2 text-[11.5px] text-ink-subtle">
-                  Closing reviews what&apos;s pending first. Deleting hides the ticket
-                  everywhere (recoverable by support).
+                  Closing reviews what&apos;s pending first.
+                  {isSuper
+                    ? " Deleting hides the ticket everywhere (recoverable by support)."
+                    : ""}
                 </p>
               </div>
             )}
