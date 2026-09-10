@@ -77,7 +77,7 @@ export type Presets = {
 };
 
 export type CatalogueProduct = {
-  id: number | null;
+  id: number;
   brand: string | null;
   brand_sub_label: string | null;
   model: string | null;
@@ -89,7 +89,32 @@ export type CatalogueProduct = {
   default_row_style: RowStyle;
   image_asset: string | null;
   image_storage_key: string | null;
+  /** Absolute (S3) or API-relative (/uploads, /static) — use absoluteUrl(). */
+  image_url: string | null;
+  active: boolean;
+  sort_order: number;
 };
+
+export type CatalogueProductInput = {
+  name: string;
+  brand?: string | null;
+  brand_sub_label?: string | null;
+  model?: string | null;
+  headline: string;
+  spec_lines?: string | null;
+  warranty_label?: string | null;
+  default_unit_price?: string | null;
+  default_row_style?: RowStyle;
+  sort_order?: number | null;
+  active?: boolean;
+  remove_image?: boolean;
+};
+
+/** API-relative URLs (local uploads, bundled assets) need the API origin. */
+export function absoluteUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return url.startsWith("/") ? `${BASE}${url}` : url;
+}
 
 export type QuotationItemOut = {
   id: number;
@@ -184,9 +209,53 @@ export function fetchPresets(fetcher: Fetcher) {
   return getJson<Presets>(fetcher, `${ROOT}/presets`);
 }
 
-export function fetchCatalogue(fetcher: Fetcher, q = "") {
-  const qs = q ? `?q=${encodeURIComponent(q)}` : "";
-  return getJson<CatalogueProduct[]>(fetcher, `${ROOT}/products${qs}`);
+export function fetchCatalogue(fetcher: Fetcher, q = "", active: "true" | "false" | "all" = "true") {
+  const qs = new URLSearchParams({ active });
+  if (q) qs.set("q", q);
+  return getJson<CatalogueProduct[]>(fetcher, `${ROOT}/products?${qs}`);
+}
+
+function productForm(payload: CatalogueProductInput, image?: File | null): FormData {
+  const fd = new FormData();
+  fd.append("payload", JSON.stringify(payload));
+  if (image) fd.append("image", image, image.name);
+  return fd;
+}
+
+export async function createProduct(fetcher: Fetcher, payload: CatalogueProductInput, image?: File | null) {
+  const res = await fetcher(`${ROOT}/products`, { method: "POST", body: productForm(payload, image) });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return (await res.json()) as CatalogueProduct;
+}
+
+export async function updateProduct(fetcher: Fetcher, id: number, payload: CatalogueProductInput | Partial<CatalogueProductInput>, image?: File | null) {
+  const res = await fetcher(`${ROOT}/products/${id}`, { method: "PATCH", body: productForm(payload as CatalogueProductInput, image) });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return (await res.json()) as CatalogueProduct;
+}
+
+export async function deleteProduct(fetcher: Fetcher, id: number) {
+  const res = await fetcher(`${ROOT}/products/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await errorMessage(res));
+}
+
+export async function reorderProducts(fetcher: Fetcher, ids: number[]) {
+  const res = await fetcher(`${ROOT}/products/reorder`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return (await res.json()) as CatalogueProduct[];
+}
+
+/** One-off picture for a custom quotation row. */
+export async function uploadItemImage(fetcher: Fetcher, image: File): Promise<{ storage_key: string; url: string }> {
+  const fd = new FormData();
+  fd.append("image", image, image.name);
+  const res = await fetcher(`${ROOT}/item-images`, { method: "POST", body: fd });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return (await res.json()) as { storage_key: string; url: string };
 }
 
 export function fetchNextReference(fetcher: Fetcher, date: string, signatoryId: number) {
