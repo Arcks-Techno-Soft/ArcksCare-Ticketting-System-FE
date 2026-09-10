@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { AdminShell } from "@/components/admin/admin-shell";
+import { DownloadMenu } from "@/components/admin/download-menu";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { useAuth, isAdminLevel } from "@/lib/auth";
@@ -67,6 +68,7 @@ export default function QuotationsListPage() {
                 <th className="px-4 py-3">Subject</th>
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3">Issued by</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -78,10 +80,21 @@ export default function QuotationsListPage() {
                   <td className="px-4 py-3 text-ink-muted">{r.subject_line ?? "—"}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-ink">₹ {fmtInr(r.grand_total)}</td>
                   <td className="px-4 py-3 text-ink-muted">{r.created_by?.name ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <DownloadMenu id={r.id} reference={r.reference} compact onError={setError} />
+                      <Link
+                        href={`/admin/quotations/new?from=${r.id}`}
+                        className="inline-flex h-8 items-center rounded-xl2 px-3 text-[13px] font-medium text-ink hover:bg-surface-sunken"
+                      >
+                        Duplicate
+                      </Link>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {data && data.items.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-ink-muted">No quotations yet.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-ink-muted">No quotations yet.</td></tr>
               )}
             </tbody>
           </table>

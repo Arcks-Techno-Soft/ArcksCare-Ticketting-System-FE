@@ -52,6 +52,8 @@ export type QuotationDraft = {
   terms: string[];
   show_sl_no: boolean | null;
   items: QuotationItemDraft[];
+  /** Set by POST /{id}/duplicate; recorded on the issued row. */
+  duplicated_from_id?: number | null;
 };
 
 export type Signatory = {
@@ -138,6 +140,7 @@ export type QuotationOut = QuotationSummary & {
   gst_amount: string;
   pdf_url: string | null;
   issued_at: string | null;
+  duplicated_from_id: number | null;
   items: QuotationItemOut[];
 };
 
@@ -256,18 +259,47 @@ export function fetchQuotations(
   return getJson<QuotationList>(fetcher, `${ROOT}?${qs}`);
 }
 
-/** Download the stored PDF through the API (JWT) and hand it to the browser. */
-export async function downloadQuotationPdf(fetcher: Fetcher, id: number, reference: string): Promise<string | null> {
-  const res = await fetcher(`${ROOT}/${id}/file?format=pdf`);
+/* ------------------------------ downloads -------------------------------- */
+
+export type FileFormat = "pdf" | "docx" | "png" | "jpeg";
+export const FILE_FORMATS: FileFormat[] = ["pdf", "docx", "png", "jpeg"];
+export const FILE_FORMAT_LABELS: Record<FileFormat, string> = {
+  pdf: "PDF",
+  docx: "Word (editable copy)",
+  png: "PNG",
+  jpeg: "JPEG",
+};
+const FILE_EXT: Record<FileFormat, string> = { pdf: "pdf", docx: "docx", png: "png", jpeg: "jpg" };
+
+/** Fetch a stored quotation in the given format through the API (JWT) and
+ *  hand it to the browser as a download. Returns an error message or null. */
+export async function downloadQuotationFile(
+  fetcher: Fetcher,
+  id: number,
+  reference: string,
+  format: FileFormat = "pdf",
+): Promise<string | null> {
+  const res = await fetcher(`${ROOT}/${id}/file?format=${format}`);
   if (!res.ok) return await errorMessage(res);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${reference.replace(/\//g, "-")}.pdf`;
+  a.download = `${reference.replace(/\//g, "-")}.${FILE_EXT[format]}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
   return null;
+}
+
+/** Back-compat alias. */
+export const downloadQuotationPdf = (fetcher: Fetcher, id: number, reference: string) =>
+  downloadQuotationFile(fetcher, id, reference, "pdf");
+
+/** A draft copy of an issued quotation (reference cleared, date = today). */
+export async function duplicateQuotation(fetcher: Fetcher, id: number | string): Promise<QuotationDraft> {
+  const res = await fetcher(`${ROOT}/${id}/duplicate`, { method: "POST" });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return (await res.json()) as QuotationDraft;
 }
