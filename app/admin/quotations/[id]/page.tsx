@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Download, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
-import { Button } from "@/components/ui/Button";
+import { DownloadMenu } from "@/components/admin/download-menu";
 import { useAuth, isAdminLevel } from "@/lib/auth";
 import { fmtIstDate } from "@/lib/format-date";
 import { fmtInr } from "@/lib/quotation-schema";
-import { downloadQuotationPdf, fetchQuotation, type QuotationOut } from "@/lib/quotations-api";
+import { fetchQuotation, type QuotationOut } from "@/lib/quotations-api";
 
 export default function QuotationDetailPage() {
   const router = useRouter();
@@ -19,7 +19,6 @@ export default function QuotationDetailPage() {
   const { ready, user, authFetch } = useAuth();
   const [q, setQ] = useState<QuotationOut | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
   const justSaved = search.get("saved") === "1";
 
   useEffect(() => {
@@ -34,14 +33,6 @@ export default function QuotationDetailPage() {
   }, [ready, user, params?.id, authFetch]);
 
   if (!ready || !user || !isAdminLevel(user.role)) return null;
-
-  const download = async () => {
-    if (!q) return;
-    setDownloading(true);
-    const err = await downloadQuotationPdf(authFetch, q.id, q.reference);
-    if (err) setError(err);
-    setDownloading(false);
-  };
 
   return (
     <AdminShell>
@@ -96,12 +87,26 @@ export default function QuotationDetailPage() {
                   <Row k={`GST @ ${q.gst_rate.replace(/\.0+$/, "")}%`} v={`₹ ${fmtInr(q.gst_amount)}`} />
                   <Row k="Total" v={`₹ ${fmtInr(q.grand_total)}`} strong />
                   {q.created_by?.name && <Row k="Issued by" v={q.created_by.name} />}
+                  {q.duplicated_from_id && (
+                    <div className="flex items-baseline justify-between gap-4">
+                      <dt className="text-ink-muted">Copied from</dt>
+                      <dd className="text-right">
+                        <Link href={`/admin/quotations/${q.duplicated_from_id}`} className="text-ink underline-offset-2 hover:underline">
+                          quotation #{q.duplicated_from_id}
+                        </Link>
+                      </dd>
+                    </div>
+                  )}
                 </dl>
               </div>
               <div className="flex flex-col gap-2">
-                <Button type="button" onClick={download} loading={downloading}>
-                  <Download size={16} /> Download PDF
-                </Button>
+                <DownloadMenu id={q.id} reference={q.reference} onError={setError} />
+                <Link
+                  href={`/admin/quotations/new?from=${q.id}`}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl2 border border-line bg-white px-5 text-[14px] font-medium text-ink hover:border-ink hover:bg-surface-raised"
+                >
+                  <Copy size={16} /> Duplicate as new
+                </Link>
                 {q.pdf_url && (
                   <a href={q.pdf_url} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl2 border border-line bg-white px-5 text-[14px] font-medium text-ink hover:border-ink hover:bg-surface-raised">
                     <ExternalLink size={16} /> Open in a new tab

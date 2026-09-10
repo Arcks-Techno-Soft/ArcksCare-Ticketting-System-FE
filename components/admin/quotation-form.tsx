@@ -13,6 +13,7 @@ import {
   computeDisplayTotals,
   emptyItem,
   fmtInrPaise,
+  fromDraft,
   NOTE_STYLE_LABELS,
   NOTE_STYLES,
   quotationSchema,
@@ -25,7 +26,9 @@ import {
 } from "@/lib/quotation-schema";
 import {
   createQuotation,
+  duplicateQuotation,
   fetchCatalogue,
+  fetchQuotation,
   fetchNextReference,
   fetchPresets,
   fetchSignatories,
@@ -61,7 +64,7 @@ function fillTerms(preset: Presets | null, key: "POS" | "CCTV", days: number) {
   return lines.map((l) => ({ text: l.replace("{days}", String(days)) }));
 }
 
-export function QuotationForm() {
+export function QuotationForm({ fromId }: { fromId?: string | null } = {}) {
   const router = useRouter();
   const { authFetch } = useAuth();
 
@@ -74,6 +77,7 @@ export function QuotationForm() {
   const [editRef, setEditRef] = useState(false);
   const [preview, setPreview] = useState<{ url: string; kind: "pdf" | "png"; subtotal: string; gst: string; grandTotal: string } | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
 
   const form = useForm<QuotationFormValues>({
     resolver: zodResolver(quotationSchema),
@@ -99,9 +103,10 @@ export function QuotationForm() {
       terms: [],
       show_sl_no: "Auto",
       items: [],
+      duplicated_from_id: null,
     },
   });
-  const { register, control, handleSubmit, setValue, getValues, watch, setError, formState } = form;
+  const { register, control, handleSubmit, setValue, getValues, watch, setError, reset, formState } = form;
   const { errors, isDirty } = formState;
 
   const items = useFieldArray({ control, name: "items" });
@@ -130,6 +135,16 @@ export function QuotationForm() {
           setValue("note_text", pre.notes.POS.text);
           setValue("note_style", pre.notes.POS.style);
         }
+        if (fromId) {
+          // Duplicate flow: replace everything with the server's draft copy.
+          const [draft, source] = await Promise.all([
+            duplicateQuotation(authFetch, fromId),
+            fetchQuotation(authFetch, fromId).catch(() => null),
+          ]);
+          if (cancelled) return;
+          reset(fromDraft(draft), { keepDefaultValues: true });
+          setCopiedFrom(source?.reference ?? `#${fromId}`);
+        }
       } catch (e) {
         if (!cancelled) setServerError(e instanceof Error ? e.message : "Could not load form data");
       }
@@ -137,7 +152,7 @@ export function QuotationForm() {
     return () => {
       cancelled = true;
     };
-  }, [authFetch, setValue, getValues]);
+  }, [authFetch, setValue, getValues, reset, fromId]);
 
   const quotationDate = watch("quotation_date");
   const signatoryId = watch("signatory_id");
@@ -295,6 +310,12 @@ export function QuotationForm() {
 
   return (
     <form onSubmit={handleSubmit(generate)} className="space-y-12" noValidate>
+      {copiedFrom && (
+        <div className="rounded-xl2 border border-line bg-surface-raised p-4 text-[14px] text-ink-muted">
+          Pre-filled from quotation <span className="font-medium text-ink">{copiedFrom}</span>. The date is today and a new
+          reference will be assigned on submit.
+        </div>
+      )}
       {/* ------------------------------ Bill To --------------------------- */}
       <Section index="01" title="Bill to" caption="Who the quotation is addressed to. Past customers autocomplete.">
         <Grid>

@@ -102,6 +102,7 @@ export const quotationSchema = z.object({
     .max(12, "At most 12 terms"),
   show_sl_no: z.enum(SL_NO_OPTIONS),
   items: z.array(quotationItemSchema).min(1, "Add at least one item").max(50, "At most 50 items"),
+  duplicated_from_id: z.number().int().nullable().optional(),
 });
 
 export type QuotationFormValues = z.infer<typeof quotationSchema>;
@@ -166,6 +167,54 @@ export function toDraft(v: QuotationFormValues): QuotationDraft {
     terms: v.terms.map((t) => t.text.trim()).filter(Boolean),
     show_sl_no: v.show_sl_no === "Auto" ? null : v.show_sl_no === "Show",
     items,
+    duplicated_from_id: v.duplicated_from_id ?? null,
+  };
+}
+
+/** "38000.00" → "38000", "1.50" → "1.5" — what a person would have typed. */
+function tidyNumber(v: string | number): string {
+  const s = String(v);
+  return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
+}
+
+/** Inverse of toDraft — used to pre-fill the form from a duplicate draft. */
+export function fromDraft(d: QuotationDraft): QuotationFormValues {
+  return {
+    quotation_date: d.quotation_date,
+    reference: d.reference ?? "",
+    customer_name: d.customer_name,
+    address_lines: d.address_lines.join("\n"),
+    customer_gstin: d.customer_gstin ?? "",
+    customer_pan: d.customer_pan ?? "",
+    contact_name: d.contact_name ?? "",
+    contact_phone: d.contact_phone ?? "",
+    contact_email: d.contact_email ?? "",
+    subject_line: d.subject_line ?? "",
+    signatory_id: d.signatory_id,
+    validity_days: d.validity_days,
+    gst_rate: tidyNumber(d.gst_rate),
+    totals_label_set: d.totals_label_set,
+    note_text: d.note_text ?? "",
+    note_style: d.note_style,
+    terms_preset: d.terms_preset ?? "POS",
+    terms: d.terms.map((text) => ({ text })),
+    show_sl_no: d.show_sl_no == null ? "Auto" : d.show_sl_no ? "Show" : "Hide",
+    items: d.items.map((i) => ({
+      row_style: i.row_style === "COMPACT" ? "Compact" : "Detailed",
+      brand: i.brand ?? "",
+      brand_sub_label: i.brand_sub_label ?? "",
+      model: i.model ?? "",
+      headline: i.headline,
+      spec_lines: i.spec_lines ?? "",
+      warranty_label: i.warranty_label ?? "",
+      unit_price: tidyNumber(i.unit_price),
+      quantity: tidyNumber(i.quantity),
+      include_image: i.include_image,
+      image_asset: i.image_asset ?? "",
+      image_storage_key: i.image_storage_key ?? "",
+      product_id: i.product_id ?? null,
+    })),
+    duplicated_from_id: d.duplicated_from_id ?? null,
   };
 }
 
