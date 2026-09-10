@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useFieldArray, useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { ArrowDown, ArrowUp, Highlighter, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Highlighter, Image as ImageIcon, Plus, Trash2 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
 import { fetchBusinessNameSuggestions } from "@/lib/api";
@@ -25,10 +25,12 @@ import {
   type QuotationItemFormValues,
 } from "@/lib/quotation-schema";
 import {
+  absoluteUrl,
   createQuotation,
   duplicateQuotation,
   fetchCatalogue,
   fetchQuotation,
+  uploadItemImage,
   fetchNextReference,
   fetchPresets,
   fetchSignatories,
@@ -202,6 +204,7 @@ export function QuotationForm({ fromId }: { fromId?: string | null } = {}) {
       image_asset: p.image_asset ?? "",
       image_storage_key: p.image_storage_key ?? "",
       product_id: p.id,
+      image_url: p.image_url,
     });
   };
 
@@ -617,9 +620,34 @@ function ItemCard({
   const { register, watch, setValue, getValues, formState: { errors } } = form;
   const err = errors.items?.[index];
   const rowStyle = watch(`items.${index}.row_style`);
+  const { authFetch } = useAuth();
   const imageAsset = watch(`items.${index}.image_asset`);
   const imageKey = watch(`items.${index}.image_storage_key`);
+  const imageUrl = watch(`items.${index}.image_url`);
+  const includeImage = watch(`items.${index}.include_image`);
   const hasImage = !!(imageAsset || imageKey);
+  const thumb = absoluteUrl(imageUrl) ?? (imageAsset ? absoluteUrl(`/static/quotation-products/${imageAsset}`) : null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const res = await uploadItemImage(authFetch, file);
+      setValue(`items.${index}.image_storage_key`, res.storage_key, { shouldDirty: true });
+      setValue(`items.${index}.image_asset`, "", { shouldDirty: true });
+      setValue(`items.${index}.image_url`, res.url, { shouldDirty: true });
+      setValue(`items.${index}.include_image`, true, { shouldDirty: true });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
   const headlineRef = useRef<HTMLTextAreaElement | null>(null);
   const specRef = useRef<HTMLTextAreaElement | null>(null);
   const headlineReg = register(`items.${index}.headline` as const);
@@ -701,15 +729,35 @@ function ItemCard({
                 <Input placeholder="3 Years Onsite Warranty" {...register(f("warranty_label"))} />
               </FieldGroup>
               <FieldGroup>
-                <label className={`flex items-start gap-3 rounded-xl2 border border-line p-3.5 text-[14px] ${hasImage ? "cursor-pointer" : "opacity-60"}`}>
-                  <input type="checkbox" className="mt-0.5 accent-black" disabled={!hasImage} {...register(f("include_image"))} />
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl2 border border-line p-3.5 text-[14px]">
+                  <input type="checkbox" className="mt-0.5 accent-black" {...register(f("include_image"))} />
                   <span>
                     <span className="block text-ink">Include product image</span>
                     <span className="block text-[12.5px] text-ink-subtle">
-                      {hasImage ? imageAsset || imageKey : "Available for catalogue products (uploads arrive with the catalogue)"}
+                      {hasImage ? "Photo attached" : "Tick to attach a photo for this row"}
                     </span>
                   </span>
                 </label>
+                {includeImage && (
+                  <div className="mt-2 flex items-center gap-3">
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumb} alt="" className="h-14 w-14 rounded-lg border border-line object-contain bg-white" />
+                    ) : (
+                      <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-dashed border-line text-ink-subtle">
+                        <ImageIcon size={18} />
+                      </div>
+                    )}
+                    <div className="text-[12.5px] text-ink-muted">
+                      <label className="cursor-pointer font-medium text-ink underline-offset-2 hover:underline">
+                        {uploading ? "Uploading…" : hasImage ? "Replace photo" : "Upload a photo"}
+                        <input type="file" accept="image/*" className="sr-only" disabled={uploading} onChange={onPickFile} />
+                      </label>
+                      <span className="block">PNG or JPEG, up to 5 MB. Resized to 800 px.</span>
+                      {uploadError && <span className="block text-accent-danger">{uploadError}</span>}
+                    </div>
+                  </div>
+                )}
               </FieldGroup>
             </div>
           </>

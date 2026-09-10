@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { FilePlus2, FolderSearch } from "lucide-react";
+import { FilePlus2, FolderSearch, Package } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { HubTile } from "@/components/admin/hub-tile";
@@ -46,6 +46,12 @@ export default function QuotationsHubPage() {
             title="Explore existing quotations"
             description="Search issued quotations by reference or customer and open their PDFs."
             icon={<FolderSearch size={20} />}
+          />
+          <HubTile
+            href="/admin/quotations/products"
+            title="Product catalogue"
+            description="Products with their spec text and photo, ready to drop into a quotation."
+            icon={<Package size={20} />}
           />
         </div>
       </section>

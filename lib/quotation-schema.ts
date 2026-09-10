@@ -58,6 +58,8 @@ export const quotationItemSchema = z.object({
   image_asset: z.string().optional().or(z.literal("")),
   image_storage_key: z.string().optional().or(z.literal("")),
   product_id: z.number().int().nullable().optional(),
+  /** Display only (thumbnail); never sent. */
+  image_url: z.string().nullable().optional(),
 });
 
 export const quotationSchema = z.object({
@@ -125,6 +127,7 @@ export function emptyItem(rowStyle: RowStyleLabel = "Detailed"): QuotationItemFo
     image_asset: "",
     image_storage_key: "",
     product_id: null,
+    image_url: null,
   };
 }
 
@@ -213,6 +216,7 @@ export function fromDraft(d: QuotationDraft): QuotationFormValues {
       image_asset: i.image_asset ?? "",
       image_storage_key: i.image_storage_key ?? "",
       product_id: i.product_id ?? null,
+      image_url: null,
     })),
     duplicated_from_id: d.duplicated_from_id ?? null,
   };
