@@ -117,12 +117,6 @@ export default function AdminLoginPage() {
             {submitting ? "Signing in…" : "Sign in"}
           </Button>
         </form>
-
-        <p className="mt-10 text-[12px] text-ink-subtle">
-          Dev defaults: <code className="font-mono">owner / owner123</code> (Admin) ·{" "}
-          <code className="font-mono">admin / admin123</code> (Manager).
-          Change these in <code className="font-mono">backend/.env</code> before deploying.
-        </p>
       </div>
     </div>
   );
