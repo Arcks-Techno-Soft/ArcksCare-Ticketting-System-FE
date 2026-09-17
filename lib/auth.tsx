@@ -52,6 +52,15 @@ export function isAdminLevel(role?: string | null): boolean {
   return role === "ADMIN" || isSuperAdmin(role);
 }
 
+/**
+ * Admin-level plus Manager. Mirrors the backend's `require_role(ADMIN, MANAGER)`
+ * gate on the quotation workflow — Managers can build and issue quotations, but
+ * editing the product catalogue stays admin-only (keep using isAdminLevel there).
+ */
+export function isManagerLevel(role?: string | null): boolean {
+  return role === "MANAGER" || isAdminLevel(role);
+}
+
 type LoginResponse = {
   access_token: string;
   token_type: string;
