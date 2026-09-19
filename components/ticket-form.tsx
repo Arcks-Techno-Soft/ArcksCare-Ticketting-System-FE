@@ -30,6 +30,7 @@ import {
 import { TicketSummary } from "@/components/ticket-summary";
 import { FileDropZone, type SelectedFile } from "@/components/file-drop-zone";
 import { SuggestionList, useAutocomplete } from "@/components/ui/autocomplete";
+import { DuplicateTicketDialog } from "@/components/duplicate-ticket-dialog";
 
 // Leaflet touches `window`, so the map must be client-only.
 const AddressMap = dynamic(() => import("@/components/address-map"), {
@@ -65,6 +66,7 @@ export function TicketForm({
   const router = useRouter();
   const [step, setStep] = useState<Step>("form");
   const [duplicate, setDuplicate] = useState<DuplicateError | null>(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<SelectedFile[]>([]);
 
@@ -173,6 +175,7 @@ export function TicketForm({
     }
     if (res.kind === "duplicate") {
       setDuplicate(res.info);
+      setDuplicateOpen(true);
       setStep("form");
       return;
     }
@@ -493,6 +496,13 @@ export function TicketForm({
 
       {/* ------------------------------ Review --------------------------- */}
       <TicketSummary values={watched} attachments={attachments.map((a) => a.file)} />
+
+      <DuplicateTicketDialog
+        open={duplicateOpen}
+        info={duplicate}
+        serialNumber={watched.serial_number}
+        onClose={() => setDuplicateOpen(false)}
+      />
 
       {/* ------------------------------ Submit --------------------------- */}
       <AnimatePresence>
