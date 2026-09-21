@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Copy, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink, Pencil } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { DownloadMenu } from "@/components/admin/download-menu";
@@ -87,6 +87,12 @@ export default function QuotationDetailPage() {
                   <Row k={`GST @ ${q.gst_rate.replace(/\.0+$/, "")}%`} v={`₹ ${fmtInr(q.gst_amount)}`} />
                   <Row k="Total" v={`₹ ${fmtInr(q.grand_total)}`} strong />
                   {q.created_by?.name && <Row k="Issued by" v={q.created_by.name} />}
+                  {q.updated_at && (
+                    <Row
+                      k="Last edited"
+                      v={`${fmtIstDate(q.updated_at)}${q.updated_by?.name ? ` · ${q.updated_by.name}` : ""}`}
+                    />
+                  )}
                   {q.duplicated_from_id && (
                     <div className="flex items-baseline justify-between gap-4">
                       <dt className="text-ink-muted">Copied from</dt>
@@ -101,6 +107,12 @@ export default function QuotationDetailPage() {
               </div>
               <div className="flex flex-col gap-2">
                 <DownloadMenu id={q.id} reference={q.reference} onError={setError} />
+                <Link
+                  href={`/admin/quotations/new?edit=${q.id}`}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl2 border border-line bg-white px-5 text-[14px] font-medium text-ink hover:border-ink hover:bg-surface-raised"
+                >
+                  <Pencil size={16} /> Edit this quotation
+                </Link>
                 <Link
                   href={`/admin/quotations/new?from=${q.id}`}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-xl2 border border-line bg-white px-5 text-[14px] font-medium text-ink hover:border-ink hover:bg-surface-raised"

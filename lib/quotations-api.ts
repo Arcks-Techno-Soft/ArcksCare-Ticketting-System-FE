@@ -143,6 +143,9 @@ export type QuotationSummary = {
   grand_total: string;
   created_by: { id: number; name: string | null; username: string | null } | null;
   created_at: string | null;
+  // Set once the quotation has been corrected in place.
+  updated_by?: { id: number; name: string | null; username: string | null } | null;
+  updated_at?: string | null;
 };
 
 export type QuotationOut = QuotationSummary & {
@@ -309,6 +312,35 @@ export async function createQuotation(fetcher: Fetcher, draft: QuotationDraft): 
   } catch (e) {
     return { kind: "error", message: e instanceof Error ? e.message : "Network error" };
   }
+}
+
+export async function updateQuotation(
+  fetcher: Fetcher,
+  id: number | string,
+  draft: QuotationDraft
+): Promise<CreateResult> {
+  try {
+    const res = await fetcher(`${ROOT}/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    if (res.ok) return { kind: "created", quotation: (await res.json()) as QuotationOut };
+    if (res.status === 409) return { kind: "conflict", message: await errorMessage(res) };
+    return { kind: "error", message: await errorMessage(res) };
+  } catch (e) {
+    return { kind: "error", message: e instanceof Error ? e.message : "Network error" };
+  }
+}
+
+/** The quotation as an editable draft — reference and date kept, unlike duplicate. */
+export async function fetchQuotationDraft(
+  fetcher: Fetcher,
+  id: number | string
+): Promise<QuotationDraft> {
+  const res = await fetcher(`${ROOT}/${id}/draft`);
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return (await res.json()) as QuotationDraft;
 }
 
 export function fetchQuotation(fetcher: Fetcher, id: number | string) {

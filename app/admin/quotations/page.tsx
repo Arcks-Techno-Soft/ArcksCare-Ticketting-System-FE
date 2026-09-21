@@ -6,10 +6,9 @@ import { FilePlus2, FolderSearch, Package } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { HubTile } from "@/components/admin/hub-tile";
-import { useAuth, isAdminLevel, isManagerLevel } from "@/lib/auth";
+import { useAuth, isManagerLevel } from "@/lib/auth";
 
-/** Quotations hub — Super Admin + Admin + Manager (the API is the real gate).
- *  The product-catalogue tile stays Admin-only, matching its page + API. */
+/** Quotations hub — Super Admin + Admin + Manager (the API is the real gate). */
 export default function QuotationsHubPage() {
   const router = useRouter();
   const { ready, user } = useAuth();
@@ -48,14 +47,12 @@ export default function QuotationsHubPage() {
             description="Search issued quotations by reference or customer and open their PDFs."
             icon={<FolderSearch size={20} />}
           />
-          {isAdminLevel(user.role) && (
-            <HubTile
-              href="/admin/quotations/products"
-              title="Product catalogue"
-              description="Products with their spec text and photo, ready to drop into a quotation."
-              icon={<Package size={20} />}
-            />
-          )}
+          <HubTile
+            href="/admin/quotations/products"
+            title="Product catalogue"
+            description="Products with their spec text and photo, ready to drop into a quotation."
+            icon={<Package size={20} />}
+          />
         </div>
       </section>
     </AdminShell>
