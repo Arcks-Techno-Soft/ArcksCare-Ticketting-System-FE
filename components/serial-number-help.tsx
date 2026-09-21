@@ -73,7 +73,7 @@ export function SerialNumberHelp({ productCategory }: { productCategory?: string
         device — usually underneath or on the back. Look for the number under
         the barcode.
         {sample &&
-          " Enter it exactly as printed; the middle characters are hidden in this example."}
+          " Enter it exactly as printed; the last few characters are hidden in this example."}
       </p>
 
       {sample && (
