@@ -9,6 +9,10 @@
  * link nobody opens. Only the matching device is shown — a printer label is
  * noise on a POS ticket — and the generic hint carries the other categories,
  * which have no sample of their own.
+ *
+ * The -v2 in the filenames is deliberate: the first published version showed
+ * unmasked serials, and these are served with a 4-hour cache. Re-editing the
+ * same path would have left that image in visitors' caches; a new path can't.
  */
 import { useEffect, useState } from "react";
 import Image from "next/image";
@@ -26,7 +30,7 @@ type Sample = {
 /** Keyed by the product_category values in lib/options.ts. */
 export const SERIAL_SAMPLES: Record<string, Sample> = {
   Printer: {
-    src: "/serial-help/thermal-printer-label.png",
+    src: "/serial-help/thermal-printer-label-v2.png",
     width: 841,
     height: 513,
     title: "Printer",
@@ -36,7 +40,7 @@ export const SERIAL_SAMPLES: Record<string, Sample> = {
       "It is partly masked in this example.",
   },
   "POS Machine": {
-    src: "/serial-help/touch-pos-label.png",
+    src: "/serial-help/touch-pos-label-v2.png",
     width: 593,
     height: 245,
     title: "POS machine",
