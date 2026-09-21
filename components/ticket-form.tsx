@@ -31,6 +31,7 @@ import { TicketSummary } from "@/components/ticket-summary";
 import { FileDropZone, type SelectedFile } from "@/components/file-drop-zone";
 import { SuggestionList, useAutocomplete } from "@/components/ui/autocomplete";
 import { DuplicateTicketDialog } from "@/components/duplicate-ticket-dialog";
+import { SerialNumberHelp } from "@/components/serial-number-help";
 
 // Leaflet touches `window`, so the map must be client-only.
 const AddressMap = dynamic(() => import("@/components/address-map"), {
@@ -414,20 +415,27 @@ export function TicketForm({
           </FieldGroup>
 
           {!productIsOther && (
-            <FieldGroup>
-              <Label htmlFor="serial_number" required hint="Used to track your device">
-                Serial number
-              </Label>
-              <Input
-                id="serial_number"
-                placeholder="e.g. POSBK-2024-A1023"
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
-                {...register("serial_number")}
-              />
-              <FieldError message={errors.serial_number?.message} />
-            </FieldGroup>
+            <>
+              <FieldGroup>
+                <Label htmlFor="serial_number" required hint="Used to track your device">
+                  Serial number
+                </Label>
+                <Input
+                  id="serial_number"
+                  placeholder="e.g. UL2512231030"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  {...register("serial_number")}
+                />
+                <FieldError message={errors.serial_number?.message} />
+              </FieldGroup>
+              {/* Own full-width row: two sample labels need more than the
+                  half-width column the field sits in. */}
+              <div className="md:col-span-2">
+                <SerialNumberHelp />
+              </div>
+            </>
           )}
         </Grid>
       </Section>
