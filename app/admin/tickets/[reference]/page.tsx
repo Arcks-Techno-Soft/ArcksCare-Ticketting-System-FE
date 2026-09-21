@@ -17,7 +17,7 @@ const AddressMap = dynamic(() => import("@/components/address-map"), {
   ),
 });
 
-import { useAuth, API_BASE_URL, isAdminLevel, isSuperAdmin } from "@/lib/auth";
+import { useAuth, API_BASE_URL, isAdminLevel, isManagerLevel, isSuperAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { StatusBadge, SeverityBadge, WarrantyBadge, HoldBadge } from "@/components/admin/status-badge";
 import { Button } from "@/components/ui/Button";
@@ -1078,6 +1078,8 @@ export default function TicketDetailPage() {
   const canModerate = isAdminLevel(user.role) || user.role === "MANAGER";
   // Admin-level = ADMIN or SUPER_ADMIN (general admin powers).
   const adminLevel = isAdminLevel(user.role);
+  // Closing is Manager-level; deleting stays super-admin-only.
+  const canClose = isManagerLevel(user.role);
   // Soft-delete is the last RESERVED super-admin power on this screen. Plain
   // ADMINs must NOT have it. (Force-close became Admin-level on 2026-09-04, and
   // waiving below the service-fee minimum AND editing charges outside the
@@ -1423,11 +1425,15 @@ export default function TicketDetailPage() {
                 error={coEngError}
               />
             )}
-            {/* Admin-level force-close; soft-delete stays super-admin-only. */}
-            {adminLevel && (
+            {/* Manager-level force-close; soft-delete stays super-admin-only. */}
+            {canClose && (
               <div className="rounded-xl2 border border-red-200 bg-red-50/40 p-5">
                 <p className="text-[11px] uppercase tracking-[0.16em] text-red-600">
-                  {isSuper ? "Super Admin controls" : "Admin controls"}
+                  {isSuper
+                    ? "Super Admin controls"
+                    : adminLevel
+                      ? "Admin controls"
+                      : "Manager controls"}
                 </p>
                 <div className="mt-3 space-y-2">
                   {ticket.status !== "CLOSED" && (
