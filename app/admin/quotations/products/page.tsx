@@ -8,7 +8,7 @@ import { ArrowDown, ArrowUp, Image as ImageIcon, Pencil, Plus, RotateCcw, Trash2
 import { AdminShell } from "@/components/admin/admin-shell";
 import { Button } from "@/components/ui/Button";
 import { FieldError, FieldGroup, Input, Label, Select, Textarea } from "@/components/ui/Field";
-import { useAuth, isAdminLevel } from "@/lib/auth";
+import { useAuth, isManagerLevel } from "@/lib/auth";
 import { fmtInr } from "@/lib/quotation-schema";
 import {
   absoluteUrl,
@@ -69,7 +69,7 @@ export default function CataloguePage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (!isAdminLevel(user.role)) router.replace("/admin/tickets");
+    else if (!isManagerLevel(user.role)) router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   const load = useCallback(async () => {
@@ -84,7 +84,7 @@ export default function CataloguePage() {
     if (ready && user) void load();
   }, [ready, user, load]);
 
-  if (!ready || !user || !isAdminLevel(user.role)) return null;
+  if (!ready || !user || !isManagerLevel(user.role)) return null;
 
   const visible = rows.filter((r) => showRetired || r.active);
   const activeIds = rows.filter((r) => r.active).map((r) => r.id);

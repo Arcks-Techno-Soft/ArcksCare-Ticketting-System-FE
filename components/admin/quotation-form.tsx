@@ -28,6 +28,8 @@ import {
   absoluteUrl,
   createQuotation,
   duplicateQuotation,
+  fetchQuotationDraft,
+  updateQuotation,
   fetchCatalogue,
   fetchQuotation,
   uploadItemImage,
@@ -66,7 +68,10 @@ function fillTerms(preset: Presets | null, key: "POS" | "CCTV", days: number) {
   return lines.map((l) => ({ text: l.replace("{days}", String(days)) }));
 }
 
-export function QuotationForm({ fromId }: { fromId?: string | null } = {}) {
+/** `fromId` duplicates an existing quotation; `editId` corrects one in place. */
+export function QuotationForm(
+  { fromId, editId }: { fromId?: string | null; editId?: string | null } = {}
+) {
   const router = useRouter();
   const { authFetch } = useAuth();
 
@@ -146,6 +151,13 @@ export function QuotationForm({ fromId }: { fromId?: string | null } = {}) {
           if (cancelled) return;
           reset(fromDraft(draft), { keepDefaultValues: true });
           setCopiedFrom(source?.reference ?? `#${fromId}`);
+        } else if (editId) {
+          // Edit flow: same draft, reference and date intact. The reference is
+          // fixed server-side, so show it rather than the auto-allocated one.
+          const draft = await fetchQuotationDraft(authFetch, editId);
+          if (cancelled) return;
+          reset(fromDraft(draft), { keepDefaultValues: true });
+          setEditRef(true);
         }
       } catch (e) {
         if (!cancelled) setServerError(e instanceof Error ? e.message : "Could not load form data");
@@ -154,7 +166,7 @@ export function QuotationForm({ fromId }: { fromId?: string | null } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [authFetch, setValue, getValues, reset, fromId]);
+  }, [authFetch, setValue, getValues, reset, fromId, editId]);
 
   const quotationDate = watch("quotation_date");
   const signatoryId = watch("signatory_id");
@@ -252,14 +264,16 @@ export function QuotationForm({ fromId }: { fromId?: string | null } = {}) {
     setServerError(null);
     setStep("submitting");
     const draft = toDraft(getValues());
-    if (!editRef) draft.reference = null; // let the server allocate atomically
-    const res = await createQuotation(authFetch, draft);
+    if (!editId && !editRef) draft.reference = null; // let the server allocate atomically
+    const res = editId
+      ? await updateQuotation(authFetch, editId, draft)
+      : await createQuotation(authFetch, draft);
     if (res.kind === "created") {
       setSubmitted(true);
       router.push(`/admin/quotations/${res.quotation.id}?saved=1`);
       return;
     }
-    if (res.kind === "conflict") {
+    if (res.kind === "conflict" && !editId) {
       setEditRef(true);
       setError("reference", { message: res.message });
       setServerError(res.message);
@@ -279,7 +293,9 @@ export function QuotationForm({ fromId }: { fromId?: string | null } = {}) {
           <div>
             <p className="text-[12px] uppercase tracking-[0.18em] text-ink-subtle">Preview</p>
             <p className="mt-1 text-[14px] text-ink-muted">
-              This is the exact document that will be issued. Reference{" "}
+              {editId
+                ? "This replaces the stored document for this quotation. Reference "
+                : "This is the exact document that will be issued. Reference "}
               <span className="font-medium text-ink">{editRef ? getValues("reference") || "—" : autoRef ?? "(assigned on submit)"}</span>
               {" · "}Total <span className="font-medium text-ink">₹ {fmtInrPaise(Math.round(Number(preview?.grandTotal ?? 0) * 100))}</span>
             </p>
@@ -289,7 +305,13 @@ export function QuotationForm({ fromId }: { fromId?: string | null } = {}) {
               Back to edit
             </Button>
             <Button type="button" onClick={submit} loading={step === "submitting"}>
-              {step === "submitting" ? "Submitting…" : "Submit quotation"}
+              {step === "submitting"
+                ? editId
+                  ? "Saving…"
+                  : "Submitting…"
+                : editId
+                  ? "Save changes"
+                  : "Submit quotation"}
             </Button>
           </div>
         </div>

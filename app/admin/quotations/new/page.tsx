@@ -22,6 +22,7 @@ function NewQuotationPageInner() {
   const { ready, user } = useAuth();
   const search = useSearchParams();
   const fromId = search.get("from");
+  const editId = search.get("edit");
 
   useEffect(() => {
     if (!ready) return;
@@ -40,16 +41,22 @@ function NewQuotationPageInner() {
           </Link>
           <p className="mt-4 text-[12px] uppercase tracking-[0.18em] text-ink-subtle">Quotations</p>
           <h1 className="mt-2 font-display text-4xl font-medium tracking-tightest text-ink">
-            {fromId ? "Duplicate quotation" : "Create a new quotation"}
+            {editId
+              ? "Edit quotation"
+              : fromId
+                ? "Duplicate quotation"
+                : "Create a new quotation"}
           </h1>
           <p className="mt-1 text-[13.5px] text-ink-muted">
-            {fromId
-              ? "Pre-filled from an issued quotation. Adjust anything, generate, then submit — it gets a fresh reference."
-              : "Fill in the details, generate the PDF to check it, then submit to issue it with the next reference number."}
+            {editId
+              ? "Correcting an issued quotation. It keeps its reference; saving re-renders the document, so any copy already downloaded is superseded."
+              : fromId
+                ? "Pre-filled from an issued quotation. Adjust anything, generate, then submit — it gets a fresh reference."
+                : "Fill in the details, generate the PDF to check it, then submit to issue it with the next reference number."}
           </p>
         </div>
         <div className="mt-8">
-          <QuotationForm fromId={fromId} />
+          <QuotationForm fromId={fromId} editId={editId} />
         </div>
       </section>
     </AdminShell>
