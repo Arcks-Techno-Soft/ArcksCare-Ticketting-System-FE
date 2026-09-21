@@ -30,8 +30,8 @@ const SAMPLES: Sample[] = [
     label: "Thermal receipt printer",
     alt:
       "Label on an SK-POS thermal receipt printer. The serial number is on the " +
-      "lower half, under the barcode, and starts with letters — for example " +
-      "UL2512231030.",
+      "lower half, under the barcode: two letters followed by ten digits. " +
+      "It is partly masked in this example.",
   },
   {
     src: "/serial-help/touch-pos-label.png",
@@ -40,8 +40,8 @@ const SAMPLES: Sample[] = [
     label: "Touch POS system",
     alt:
       "Label on an SK-POS Mighty Series touch POS system. The serial number is " +
-      "on the right, under the barcode, and is all digits — for example " +
-      "20260328117.",
+      "on the right, under the barcode, and is all digits. It is partly masked " +
+      "in this example.",
   },
 ];
 
@@ -60,7 +60,8 @@ export function SerialNumberHelp() {
       <p className="text-[12.5px] leading-relaxed text-ink-subtle">
         Can&apos;t find it? The serial number is printed on a sticker on the
         device — usually underneath or on the back. Look for the number under
-        the barcode, circled in red below.
+        the barcode, circled in red below. Enter it exactly as printed; the
+        middle characters are hidden in these examples.
       </p>
 
       <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">

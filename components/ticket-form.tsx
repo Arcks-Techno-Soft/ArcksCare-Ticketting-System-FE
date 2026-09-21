@@ -422,7 +422,7 @@ export function TicketForm({
                 </Label>
                 <Input
                   id="serial_number"
-                  placeholder="e.g. UL2512231030"
+                  placeholder="e.g. UL1234567890"
                   autoCapitalize="characters"
                   autoCorrect="off"
                   spellCheck={false}
