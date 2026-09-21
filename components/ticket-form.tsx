@@ -31,7 +31,8 @@ import { TicketSummary } from "@/components/ticket-summary";
 import { FileDropZone, type SelectedFile } from "@/components/file-drop-zone";
 import { SuggestionList, useAutocomplete } from "@/components/ui/autocomplete";
 import { DuplicateTicketDialog } from "@/components/duplicate-ticket-dialog";
-import { SerialNumberHelp } from "@/components/serial-number-help";
+import { SerialNumberHelp, hasSerialSample } from "@/components/serial-number-help";
+import { SerialPhotoField } from "@/components/serial-photo-field";
 
 // Leaflet touches `window`, so the map must be client-only.
 const AddressMap = dynamic(() => import("@/components/address-map"), {
@@ -70,6 +71,8 @@ export function TicketForm({
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<SelectedFile[]>([]);
+  const [serialPhoto, setSerialPhoto] = useState<File | null>(null);
+  const [serialPhotoError, setSerialPhotoError] = useState<string | null>(null);
 
   const {
     register,
@@ -96,6 +99,16 @@ export function TicketForm({
       setValue("serial_number", "", { shouldDirty: true, shouldValidate: true });
     }
   }, [productIsOther, watched.serial_number, setValue]);
+
+  // Only the two devices with a sample label ask for a photo of it — the other
+  // categories keep the typed serial alone.
+  const needsSerialPhoto = hasSerialSample(watched.product_category);
+  useEffect(() => {
+    if (!needsSerialPhoto) {
+      setSerialPhoto(null);
+      setSerialPhotoError(null);
+    }
+  }, [needsSerialPhoto]);
 
   const businessNameField = register("business_name");
   const businessNameAc = useAutocomplete(
@@ -160,8 +173,27 @@ export function TicketForm({
   const onSubmit = async (values: TicketFormValues) => {
     setDuplicate(null);
     setServerError(null);
+    if (needsSerialPhoto && !serialPhoto) {
+      setSerialPhotoError("Please add a photo of the serial number label.");
+      document
+        .getElementById("serial_number")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setSerialPhotoError(null);
     setStep("submitting");
-    const res = await submit(values, attachments.map((a) => a.file));
+    // The label photo rides along as an attachment, renamed so it's obvious
+    // which one it is in the ticket's file list.
+    const files = attachments.map((a) => a.file);
+    if (serialPhoto) {
+      const ext = serialPhoto.name.split(".").pop() || "jpg";
+      files.unshift(
+        new File([serialPhoto], `serial-number-label.${ext}`, {
+          type: serialPhoto.type,
+        })
+      );
+    }
+    const res = await submit(values, files);
     if (res.kind === "created") {
       if (onCreated) {
         onCreated(res.ticket);
@@ -429,11 +461,21 @@ export function TicketForm({
                   {...register("serial_number")}
                 />
                 <FieldError message={errors.serial_number?.message} />
+                {needsSerialPhoto && (
+                  <SerialPhotoField
+                    value={serialPhoto}
+                    onChange={(f) => {
+                      setSerialPhoto(f);
+                      if (f) setSerialPhotoError(null);
+                    }}
+                    error={serialPhotoError}
+                  />
+                )}
               </FieldGroup>
-              {/* Own full-width row: two sample labels need more than the
+              {/* Own full-width row: the sample label needs more than the
                   half-width column the field sits in. */}
               <div className="md:col-span-2">
-                <SerialNumberHelp />
+                <SerialNumberHelp productCategory={watched.product_category} />
               </div>
             </>
           )}
