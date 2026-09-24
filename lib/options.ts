@@ -60,7 +60,7 @@ export const ISSUE_CATEGORIES_BY_PRODUCT: Partial<
     "Printer Head Issue",
     "Printer Cutter Issue",
     "Printer Motherboard Issue",
-    "Printer Blid Issue",
+    "Printer Blade Issue",
     "USB Port Not Working",
     "Printer IP Address Not Pinging",
     "Adaptor Not Working",
