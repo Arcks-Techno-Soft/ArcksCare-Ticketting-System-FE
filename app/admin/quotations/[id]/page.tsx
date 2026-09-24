@@ -7,7 +7,7 @@ import { Copy, ExternalLink, Pencil } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { DownloadMenu } from "@/components/admin/download-menu";
-import { useAuth, isManagerLevel } from "@/lib/auth";
+import { useAuth, canUseQuotations } from "@/lib/auth";
 import { fmtIstDate } from "@/lib/format-date";
 import { fmtInr } from "@/lib/quotation-schema";
 import { fetchQuotation, type QuotationOut } from "@/lib/quotations-api";
@@ -24,7 +24,7 @@ export default function QuotationDetailPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (!isManagerLevel(user.role)) router.replace("/admin/tickets");
+    else if (!canUseQuotations(user.role)) router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export default function QuotationDetailPage() {
     fetchQuotation(authFetch, params.id).then(setQ).catch((e) => setError(e instanceof Error ? e.message : "Could not load"));
   }, [ready, user, params?.id, authFetch]);
 
-  if (!ready || !user || !isManagerLevel(user.role)) return null;
+  if (!ready || !user || !canUseQuotations(user.role)) return null;
 
   return (
     <AdminShell>

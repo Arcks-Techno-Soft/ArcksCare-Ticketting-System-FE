@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { QuotationForm } from "@/components/admin/quotation-form";
-import { useAuth, isManagerLevel } from "@/lib/auth";
+import { useAuth, canUseQuotations } from "@/lib/auth";
 
 export default function NewQuotationPage() {
   return (
@@ -27,10 +27,10 @@ function NewQuotationPageInner() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (!isManagerLevel(user.role)) router.replace("/admin/tickets");
+    else if (!canUseQuotations(user.role)) router.replace("/admin/tickets");
   }, [ready, user, router]);
 
-  if (!ready || !user || !isManagerLevel(user.role)) return null;
+  if (!ready || !user || !canUseQuotations(user.role)) return null;
 
   return (
     <AdminShell>

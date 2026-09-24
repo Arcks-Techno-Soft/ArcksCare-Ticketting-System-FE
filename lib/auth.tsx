@@ -54,11 +54,20 @@ export function isAdminLevel(role?: string | null): boolean {
 
 /**
  * Admin-level plus Manager. Mirrors the backend's `require_role(ADMIN, MANAGER)`
- * gate on the quotation workflow — Managers can build and issue quotations, but
- * editing the product catalogue stays admin-only (keep using isAdminLevel there).
+ * gate — e.g. editing the quotation product catalogue.
  */
 export function isManagerLevel(role?: string | null): boolean {
   return role === "MANAGER" || isAdminLevel(role);
+}
+
+/**
+ * Manager-level plus Sales reps. Mirrors the backend's
+ * `require_role(ADMIN, MANAGER, SALES)` gate on the quotation workflow — Sales
+ * reps can build, issue, edit and download quotations, but editing the product
+ * catalogue stays Manager-level (keep using isManagerLevel there).
+ */
+export function canUseQuotations(role?: string | null): boolean {
+  return role === "SALES" || isManagerLevel(role);
 }
 
 type LoginResponse = {
