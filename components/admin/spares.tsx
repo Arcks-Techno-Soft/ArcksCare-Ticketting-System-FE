@@ -2,9 +2,10 @@
 
 /**
  * Spares — engineer-facing list of parts used to resolve a ticket plus the
- * service-fee + running total. Catalog comes from the seeded spare catalog
- * filtered by the ticket's product category. For warranty tickets, spares
- * are recorded but billed at zero.
+ * service-fee + running total. Catalog comes from the spare catalog for the
+ * ticket's product category plus the shared Accessories. Engineers can also add
+ * a custom part (name + price) that isn't in the catalog. All prices are
+ * GST-inclusive. For warranty tickets, spares are recorded but billed at zero.
  */
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -66,6 +67,10 @@ type Props = {
   }) => Promise<void> | void;
 };
 
+// <select> value for the "custom part" choice (catalog ids are numeric).
+const CUSTOM_PART = "custom";
+const ACCESSORIES = "Accessories";
+
 // A single spare's editable draft (kept as strings so the inputs stay controlled
 // while the user is mid-type; normalised to numbers on submit).
 type SpareDraft = { qty: string; price: string };
@@ -86,6 +91,10 @@ export function Spares({
   const [open, setOpen] = useState(false);
   const [pickedId, setPickedId] = useState<string>("");
   const [quantity, setQuantity] = useState<string>("1");
+  // Price for the part being added, prefilled from the catalog default and
+  // editable before adding. Custom parts also need a name.
+  const [addPrice, setAddPrice] = useState<string>("");
+  const [customName, setCustomName] = useState<string>("");
   const [feeDraft, setFeeDraft] = useState<string>(
     charges ? String(charges.service_fee_inr) : "0"
   );
@@ -124,15 +133,45 @@ export function Spares({
     [pickedId, catalog]
   );
 
+  // The product's own parts first, then the shared accessories.
+  const productParts = catalog.filter((c) => c.product_category !== ACCESSORIES);
+  const accessoryParts = catalog.filter((c) => c.product_category === ACCESSORIES);
+
+  const isCustom = pickedId === CUSTOM_PART;
+  const addPriceValue = addPrice.trim() === "" ? null : Math.max(0, parseInt(addPrice, 10) || 0);
+  const canAdd = isCustom
+    ? customName.trim().length > 0 && addPriceValue !== null
+    : pickedCatalog !== null;
+
+  const pickPart = (id: string) => {
+    setPickedId(id);
+    const item = catalog.find((c) => String(c.id) === id);
+    setAddPrice(item ? String(item.default_price_inr) : "");
+  };
+
   const resetAddForm = () => {
     setPickedId("");
     setQuantity("1");
+    setAddPrice("");
+    setCustomName("");
   };
 
   const submitAdd = async () => {
-    if (!pickedCatalog) return;
+    if (!canAdd) return;
     const qty = Math.max(1, parseInt(quantity || "1", 10));
-    await onAdd({ catalog_id: pickedCatalog.id, quantity: qty });
+    if (isCustom) {
+      await onAdd({ name: customName.trim(), unit_price_inr: addPriceValue ?? 0, quantity: qty });
+    } else if (pickedCatalog) {
+      await onAdd({
+        catalog_id: pickedCatalog.id,
+        // Only send a price when it differs from the catalog default.
+        unit_price_inr:
+          addPriceValue !== null && addPriceValue !== pickedCatalog.default_price_inr
+            ? addPriceValue
+            : undefined,
+        quantity: qty,
+      });
+    }
     setOpen(false);
     resetAddForm();
   };
@@ -259,25 +298,59 @@ export function Spares({
                     <select
                       id="sp_pick"
                       value={pickedId}
-                      onChange={(e) => setPickedId(e.target.value)}
+                      onChange={(e) => pickPart(e.target.value)}
                       className="w-full rounded-xl2 border border-line bg-white px-3 py-2.5 text-[14px] text-ink
                                  transition-all hover:border-line-strong focus:border-ink focus:outline-none
                                  focus:ring-2 focus:ring-ink/10"
                     >
-                      <option value="">
-                        {catalog.length === 0
-                          ? "No catalog parts for this product"
-                          : "Select a part…"}
-                      </option>
-                      {catalog.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                          {" — ₹"}
-                          {c.default_price_inr.toLocaleString("en-IN")}
-                        </option>
-                      ))}
+                      <option value="">Select a part…</option>
+                      {productParts.length > 0 && (
+                        <optgroup label="Parts for this product">
+                          {productParts.map((c) => (
+                            <PartOption key={c.id} item={c} />
+                          ))}
+                        </optgroup>
+                      )}
+                      {accessoryParts.length > 0 && (
+                        <optgroup label="Accessories">
+                          {accessoryParts.map((c) => (
+                            <PartOption key={c.id} item={c} />
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="Not in the list?">
+                        <option value={CUSTOM_PART}>+ Custom part…</option>
+                      </optgroup>
                     </select>
                   </FieldGroup>
+
+                  {isCustom && (
+                    <FieldGroup>
+                      <Label htmlFor="sp_name" required>Part name</Label>
+                      <Input
+                        id="sp_name"
+                        maxLength={160}
+                        placeholder="e.g. Paper sensor"
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                      />
+                    </FieldGroup>
+                  )}
+
+                  {(isCustom || pickedCatalog) && (
+                    <FieldGroup>
+                      <Label htmlFor="sp_price" required>Unit price (₹, incl. GST)</Label>
+                      <Input
+                        id="sp_price"
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={addPrice}
+                        onChange={(e) => setAddPrice(e.target.value)}
+                      />
+                    </FieldGroup>
+                  )}
 
                   <FieldGroup>
                     <Label htmlFor="sp_qty" required>Quantity</Label>
@@ -293,9 +366,10 @@ export function Spares({
 
                   {pickedCatalog && (
                     <p className="text-[12.5px] text-ink-subtle">
-                      Default price:{" "}
+                      Catalog price:{" "}
                       <strong>₹{pickedCatalog.default_price_inr.toLocaleString("en-IN")}</strong>
-                      {" "}— editable after adding.
+                      {pickedCatalog.default_price_inr === 0 && " (not priced yet — enter the price)"}
+                      {" "}— GST-inclusive, and still editable after adding.
                     </p>
                   )}
 
@@ -315,7 +389,7 @@ export function Spares({
                       variant="primary"
                       size="md"
                       loading={busy}
-                      disabled={!pickedCatalog}
+                      disabled={!canAdd}
                       onClick={submitAdd}
                     >
                       Add part
@@ -436,6 +510,17 @@ export function Spares({
         )}
       </div>
     </div>
+  );
+}
+
+function PartOption({ item }: { item: SpareCatalogItem }) {
+  return (
+    <option value={item.id}>
+      {item.name}
+      {item.default_price_inr > 0
+        ? ` — ₹${item.default_price_inr.toLocaleString("en-IN")}`
+        : " — price not set"}
+    </option>
   );
 }
 

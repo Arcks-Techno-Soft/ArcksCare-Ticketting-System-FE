@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Users, Wrench } from "lucide-react";
+import { Package, Users, Wrench } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { HubTile } from "@/components/admin/hub-tile";
@@ -50,6 +50,12 @@ export default function SettingsPage() {
             title="Sub-engineer roster"
             description="Manage field contractors by district. Feeds each ticket's add dropdown."
             icon={<Wrench size={20} />}
+          />
+          <HubTile
+            href="/admin/settings/spares"
+            title="Spare parts & prices"
+            description="Parts engineers pick while resolving, per product. Prices include GST."
+            icon={<Package size={20} />}
           />
         </div>
       </section>

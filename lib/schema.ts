@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   BUSINESS_TYPES,
   CONTACT_PERSON_PROFILES,
-  ISSUE_CATEGORIES,
+  issueCategoriesFor,
   PRODUCT_CATEGORIES,
 } from "./options";
 
@@ -70,9 +70,9 @@ export const ticketSchema = z.object({
   // a label. Required for every catalogue product — see the superRefine below.
   serial_number: z.string().trim().max(120, "Serial number is too long").default(""),
 
-  issue_category: z.enum(ISSUE_CATEGORIES, {
-    errorMap: () => ({ message: "Select an issue category" }),
-  }),
+  // Must be one of the issues offered for the chosen product — checked in the
+  // superRefine below, since the list depends on product_category.
+  issue_category: z.string({ required_error: "Select an issue category" }).min(1, "Select an issue category"),
   // Free-text category, required only when issue_category === "Other". The
   // submit layer sends this value as the issue_category when "Other" is picked.
   issue_category_other: z.string().trim().max(80).optional().or(z.literal("")),
@@ -119,6 +119,13 @@ export const ticketSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["serial_number"],
       message: "Enter the product serial number",
+    });
+  }
+  if (val.issue_category && !issueCategoriesFor(val.product_category).includes(val.issue_category)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["issue_category"],
+      message: "Select an issue category",
     });
   }
   // An "Other" issue category must be typed out.
