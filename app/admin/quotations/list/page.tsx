@@ -8,7 +8,7 @@ import { AdminShell } from "@/components/admin/admin-shell";
 import { DownloadMenu } from "@/components/admin/download-menu";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
-import { useAuth, isManagerLevel } from "@/lib/auth";
+import { useAuth, canUseQuotations } from "@/lib/auth";
 import { fmtIstDate } from "@/lib/format-date";
 import { fmtInr } from "@/lib/quotation-schema";
 import { fetchQuotations, type QuotationList } from "@/lib/quotations-api";
@@ -27,7 +27,7 @@ export default function QuotationsListPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (!isManagerLevel(user.role)) router.replace("/admin/tickets");
+    else if (!canUseQuotations(user.role)) router.replace("/admin/tickets");
   }, [ready, user, router]);
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function QuotationsListPage() {
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load"));
   }, [ready, user, authFetch, applied, offset]);
 
-  if (!ready || !user || !isManagerLevel(user.role)) return null;
+  if (!ready || !user || !canUseQuotations(user.role)) return null;
 
   return (
     <AdminShell>

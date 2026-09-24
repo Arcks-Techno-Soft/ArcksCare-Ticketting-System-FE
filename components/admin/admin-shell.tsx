@@ -79,7 +79,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Quotations",
     href: "/admin/quotations",
     icon: FileText,
-    roles: ["SUPER_ADMIN", "ADMIN", "MANAGER"],
+    roles: ["SUPER_ADMIN", "ADMIN", "MANAGER", "SALES"],
     matchPrefix: "/admin/quotations",
   },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3, roles: ["SUPER_ADMIN", "ADMIN", "MANAGER"] },

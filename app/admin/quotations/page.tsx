@@ -6,9 +6,9 @@ import { FilePlus2, FolderSearch, Package } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { HubTile } from "@/components/admin/hub-tile";
-import { useAuth, isManagerLevel } from "@/lib/auth";
+import { useAuth, canUseQuotations, isManagerLevel } from "@/lib/auth";
 
-/** Quotations hub — Super Admin + Admin + Manager (the API is the real gate). */
+/** Quotations hub — Super Admin + Admin + Manager + Sales (the API is the real gate). */
 export default function QuotationsHubPage() {
   const router = useRouter();
   const { ready, user } = useAuth();
@@ -16,10 +16,10 @@ export default function QuotationsHubPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/admin/login");
-    else if (!isManagerLevel(user.role)) router.replace("/admin/tickets");
+    else if (!canUseQuotations(user.role)) router.replace("/admin/tickets");
   }, [ready, user, router]);
 
-  if (!ready || !user || !isManagerLevel(user.role)) return null;
+  if (!ready || !user || !canUseQuotations(user.role)) return null;
 
   return (
     <AdminShell>
@@ -47,12 +47,14 @@ export default function QuotationsHubPage() {
             description="Search issued quotations by reference or customer and open their PDFs."
             icon={<FolderSearch size={20} />}
           />
-          <HubTile
-            href="/admin/quotations/products"
-            title="Product catalogue"
-            description="Products with their spec text and photo, ready to drop into a quotation."
-            icon={<Package size={20} />}
-          />
+          {isManagerLevel(user.role) && (
+            <HubTile
+              href="/admin/quotations/products"
+              title="Product catalogue"
+              description="Products with their spec text and photo, ready to drop into a quotation."
+              icon={<Package size={20} />}
+            />
+          )}
         </div>
       </section>
     </AdminShell>
