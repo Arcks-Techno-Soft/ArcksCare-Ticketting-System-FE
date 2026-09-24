@@ -13,7 +13,7 @@ import {
   BUSINESS_TYPES,
   CONTACT_PERSON_PROFILES,
   INDIAN_STATES,
-  ISSUE_CATEGORIES,
+  issueCategoriesFor,
   PREFERRED_CONTACT_TIMES,
   PRODUCT_CATEGORIES,
 } from "@/lib/options";
@@ -99,6 +99,16 @@ export function TicketForm({
       setValue("serial_number", "", { shouldDirty: true, shouldValidate: true });
     }
   }, [productIsOther, watched.serial_number, setValue]);
+
+  // The issue list depends on the product (Printer, POS Machine, … each have
+  // their own). When the product changes, clear an issue that isn't offered
+  // for the new product so a stale pick can't be submitted.
+  const issueOptions = issueCategoriesFor(watched.product_category);
+  useEffect(() => {
+    if (watched.issue_category && !issueOptions.includes(watched.issue_category)) {
+      setValue("issue_category", "", { shouldDirty: true });
+    }
+  }, [issueOptions, watched.issue_category, setValue]);
 
   // Only the two devices with a sample label ask for a photo of it — the other
   // categories keep the typed serial alone.
@@ -493,7 +503,7 @@ export function TicketForm({
             <Label htmlFor="issue_category" required>Issue category</Label>
             <Select
               id="issue_category"
-              options={ISSUE_CATEGORIES}
+              options={issueOptions}
               placeholder="Choose issue category"
               {...register("issue_category")}
             />
