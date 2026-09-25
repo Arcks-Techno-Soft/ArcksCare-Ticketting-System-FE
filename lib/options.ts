@@ -35,6 +35,7 @@ export const PRODUCT_CATEGORIES = [
   "Monitor",
   "CCTV",
   "Cash Drawer",
+  "Biometric",
   "Other",
 ] as const;
 
