@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -44,6 +44,18 @@ type ListResponse = {
 
 const STATUSES = ["NEW", "ASSIGNED", "COMPLETED", "CLOSED"] as const;
 
+// List view saved when an installation is opened, so coming back ("← All
+// installations" or the browser's Back) keeps the filters and scrolls to the
+// installation that was opened. One-shot: consumed by the next mount of this
+// page. sessionStorage keeps it per browser tab.
+const RETURN_STATE_KEY = "skpos.installationList.return";
+type ListSnapshot = {
+  statusFilter: string;
+  holdFilter: "" | "held";
+  search: string;
+  openedRef: string;
+};
+
 const STATUS_STYLES: Record<string, string> = {
   NEW: "bg-amber-50 text-amber-800 border-amber-200",
   ASSIGNED: "bg-blue-50 text-blue-800 border-blue-200",
@@ -64,6 +76,27 @@ export default function InstallationsListPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Installation to scroll to (and briefly highlight) once the restored list loads.
+  const [focusRef, setFocusRef] = useState<string | null>(null);
+  const [highlightRef, setHighlightRef] = useState<string | null>(null);
+
+  // Restore the view saved when an installation was last opened.
+  useEffect(() => {
+    let snap: ListSnapshot | null = null;
+    try {
+      const raw = sessionStorage.getItem(RETURN_STATE_KEY);
+      sessionStorage.removeItem(RETURN_STATE_KEY);
+      if (raw) snap = JSON.parse(raw) as ListSnapshot;
+    } catch {
+      /* storage blocked or bad JSON — just start fresh */
+    }
+    if (!snap) return;
+    setStatusFilter(snap.statusFilter);
+    setHoldFilter(snap.holdFilter);
+    setSearch(snap.search);
+    setDebouncedSearch(snap.search);
+    setFocusRef(snap.openedRef);
+  }, []);
 
   // Admins and managers only — engineers see their assigned installs in tickets
   // dashboard equivalent; we still allow them to view but the page is most
@@ -78,7 +111,12 @@ export default function InstallationsListPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Only the latest list request may update the table: restoring a saved view
+  // fires a second fetch right after the default one, and the older response
+  // must not land last and overwrite it.
+  const fetchSeq = useRef(0);
   const fetchRows = useCallback(async () => {
+    const seq = ++fetchSeq.current;
     const qs = new URLSearchParams();
     if (statusFilter) qs.set("status", statusFilter);
     if (holdFilter) qs.set("on_hold", "true");
@@ -93,6 +131,7 @@ export default function InstallationsListPage() {
       }
       if (!res.ok) throw new Error(`Server ${res.status}`);
       const data = (await res.json()) as ListResponse;
+      if (seq !== fetchSeq.current) return;
       setRows(data.items);
       setTotal(data.total);
       setError(null);
@@ -107,6 +146,33 @@ export default function InstallationsListPage() {
     if (!user) return;
     fetchRows();
   }, [user, fetchRows]);
+
+  // After returning from an installation, bring the row that was opened back into view.
+  useEffect(() => {
+    if (!focusRef) return;
+    const row = document.querySelector<HTMLElement>(
+      `[data-installation-ref="${CSS.escape(focusRef)}"]`
+    );
+    if (!row) return; // not loaded yet (or no longer in this view)
+    row.scrollIntoView({ block: "center" });
+    setHighlightRef(focusRef);
+    setFocusRef(null);
+    const t = setTimeout(() => setHighlightRef(null), 2000);
+    return () => clearTimeout(t);
+  }, [rows, focusRef]);
+
+  const openInstallation = useCallback(
+    (reference: string) => {
+      const snap: ListSnapshot = { statusFilter, holdFilter, search, openedRef: reference };
+      try {
+        sessionStorage.setItem(RETURN_STATE_KEY, JSON.stringify(snap));
+      } catch {
+        /* storage blocked — the list just opens fresh on return */
+      }
+      router.push(`/admin/installations/${reference}`);
+    },
+    [router, statusFilter, holdFilter, search]
+  );
 
   if (!ready || !user) return null;
 
@@ -230,8 +296,11 @@ export default function InstallationsListPage() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(i * 0.012, 0.2) }}
-                    className="cursor-pointer transition-colors hover:bg-surface-raised"
-                    onClick={() => router.push(`/admin/installations/${r.reference}`)}
+                    data-installation-ref={r.reference}
+                    className={`cursor-pointer transition-colors hover:bg-surface-raised ${
+                      highlightRef === r.reference ? "bg-amber-50" : ""
+                    }`}
+                    onClick={() => openInstallation(r.reference)}
                   >
                     <Td>
                       <span className="font-mono text-[13px] text-ink">{r.reference}</span>
