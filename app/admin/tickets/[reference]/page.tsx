@@ -1111,13 +1111,23 @@ export default function TicketDetailPage() {
           >
             ← All tickets
           </Link>
-          <button
-            type="button"
-            onClick={fetchAll}
-            className="text-[12.5px] text-ink-muted hover:text-ink transition-colors"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-4">
+            {/* Another device at the same customer: copies customer, address,
+                product and issue into a new ticket — serial is typed fresh. */}
+            <Link
+              href={`/admin/tickets/new?clone=${encodeURIComponent(ticket.reference)}`}
+              className="rounded-full border border-line px-3 py-1 text-[12.5px] text-ink hover:border-ink-soft transition-colors"
+            >
+              Clone ticket
+            </Link>
+            <button
+              type="button"
+              onClick={fetchAll}
+              className="text-[12.5px] text-ink-muted hover:text-ink transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Headline */}

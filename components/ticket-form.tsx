@@ -57,6 +57,8 @@ type TicketFormProps = {
    * an authed endpoint.
    */
   suggestBusinessNames?: (q: string) => Promise<BusinessSuggestion[]>;
+  /** Starting values, e.g. the customer/product/issue copied by "Clone ticket". */
+  defaultValues?: Partial<TicketFormValues>;
 };
 
 export function TicketForm({
@@ -64,6 +66,7 @@ export function TicketForm({
   onCreated,
   submitLabel,
   suggestBusinessNames,
+  defaultValues,
 }: TicketFormProps = {}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("form");
@@ -83,6 +86,7 @@ export function TicketForm({
   } = useForm<TicketFormValues>({
     resolver: zodResolver(ticketSchema),
     mode: "onBlur",
+    defaultValues,
   });
 
   // Watch every field so the summary updates live as the customer types.
