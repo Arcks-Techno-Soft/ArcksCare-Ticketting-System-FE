@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
@@ -62,6 +62,25 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 const REFRESH_INTERVAL_MS = 30_000;
 const PAGE_SIZES = [25, 50, 100] as const;
 type PageSize = (typeof PAGE_SIZES)[number];
+
+// Inbox view saved when a ticket is opened, so coming back ("← Back to
+// tickets" or the browser's Back) lands on the same filters and page, scrolled
+// to the ticket that was opened — not the top of page 1. One-shot: consumed by
+// the next mount of this page. sessionStorage keeps it per browser tab.
+const RETURN_STATE_KEY = "skpos.ticketInbox.return";
+type InboxSnapshot = {
+  statusFilter: string;
+  holdFilter: "" | "held" | "live";
+  search: string;
+  sortBy: SortKey;
+  businessValue: string;
+  engineerValue: string;
+  pageSize: PageSize;
+  page: number;
+  drill: Record<string, string>;
+  drillLabel: string | null;
+  openedRef: string;
+};
 
 type TicketListResponse = {
   items: AdminTicket[];
@@ -156,20 +175,65 @@ export default function AdminTicketsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Ticket to scroll to (and briefly highlight) once the restored list loads.
+  const [focusRef, setFocusRef] = useState<string | null>(null);
+  const [highlightRef, setHighlightRef] = useState<string | null>(null);
+
   // Reset to page 0 whenever the filter set changes, otherwise we might be
-  // sitting on a page that no longer exists.
+  // sitting on a page that no longer exists. Restoring a saved view also
+  // changes the filters, but must keep its saved page — `restoredFilterKey`
+  // marks that one change so it's skipped.
+  const filterKey = JSON.stringify([
+    statusFilter, holdFilter, debouncedSearch, sortBy, businessValue, engineerValue, pageSize, drill,
+  ]);
+  const restoredFilterKey = useRef<string | null>(null);
   useEffect(() => {
+    if (restoredFilterKey.current !== null) {
+      const skip = restoredFilterKey.current === filterKey;
+      restoredFilterKey.current = null;
+      if (skip) return;
+    }
     setPage(0);
-  }, [statusFilter, holdFilter, debouncedSearch, sortBy, businessValue, engineerValue, pageSize, drill]);
+    // The user changed the view themselves — drop any pending scroll-to-row.
+    setFocusRef(null);
+  }, [filterKey]);
 
   // Gate: redirect to login if not authed
   useEffect(() => {
     if (ready && !user) router.replace("/admin/login");
   }, [ready, user, router]);
 
-  // One-time read of analytics drill-down params from the URL.
+  // One-time read of analytics drill-down params from the URL — or, when the
+  // URL carries none, the view saved when a ticket was last opened.
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
+    let snap: InboxSnapshot | null = null;
+    try {
+      const raw = sessionStorage.getItem(RETURN_STATE_KEY);
+      sessionStorage.removeItem(RETURN_STATE_KEY);
+      if (raw) snap = JSON.parse(raw) as InboxSnapshot;
+    } catch {
+      /* storage blocked or bad JSON — just start fresh */
+    }
+    if (snap && p.toString() === "") {
+      restoredFilterKey.current = JSON.stringify([
+        snap.statusFilter, snap.holdFilter, snap.search, snap.sortBy,
+        snap.businessValue, snap.engineerValue, snap.pageSize, snap.drill,
+      ]);
+      setStatusFilter(snap.statusFilter);
+      setHoldFilter(snap.holdFilter);
+      setSearch(snap.search);
+      setDebouncedSearch(snap.search);
+      setSortBy(snap.sortBy);
+      setBusinessValue(snap.businessValue);
+      setEngineerValue(snap.engineerValue);
+      setPageSize(snap.pageSize);
+      setPage(snap.page);
+      setDrill(snap.drill);
+      setDrillLabel(snap.drillLabel);
+      setFocusRef(snap.openedRef);
+      return;
+    }
     const passthrough = [
       "warranty_status",
       "service_type",
@@ -212,7 +276,12 @@ export default function AdminTicketsPage() {
     window.history.replaceState(null, "", "/admin/tickets");
   }, []);
 
+  // Only the latest list request may update the table: restoring a saved view
+  // fires a second fetch right after the default one, and the older response
+  // must not land last and overwrite it.
+  const fetchSeq = useRef(0);
   const fetchTickets = useCallback(async () => {
+    const seq = ++fetchSeq.current;
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(drill)) qs.set(k, v);
     if (statusFilter) qs.set("status", statusFilter);
@@ -240,6 +309,7 @@ export default function AdminTicketsPage() {
         throw new Error(`Server ${res.status}: ${text.slice(0, 120)}`);
       }
       const data = (await res.json()) as TicketListResponse;
+      if (seq !== fetchSeq.current) return;
       setTickets(data.items);
       setTotal(data.total);
       setError(null);
@@ -322,6 +392,36 @@ export default function AdminTicketsPage() {
       cancelled = true;
     };
   }, [user, authFetch]);
+
+  // After returning from a ticket, bring the row that was opened back into view.
+  useEffect(() => {
+    if (!focusRef) return;
+    const row = document.querySelector<HTMLElement>(
+      `[data-ticket-ref="${CSS.escape(focusRef)}"]`
+    );
+    if (!row) return; // not loaded yet (or no longer in this view)
+    row.scrollIntoView({ block: "center" });
+    setHighlightRef(focusRef);
+    setFocusRef(null);
+    const t = setTimeout(() => setHighlightRef(null), 2000);
+    return () => clearTimeout(t);
+  }, [tickets, focusRef]);
+
+  const openTicket = useCallback(
+    (reference: string) => {
+      const snap: InboxSnapshot = {
+        statusFilter, holdFilter, search, sortBy, businessValue, engineerValue,
+        pageSize, page, drill, drillLabel, openedRef: reference,
+      };
+      try {
+        sessionStorage.setItem(RETURN_STATE_KEY, JSON.stringify(snap));
+      } catch {
+        /* storage blocked — the list just opens fresh on return */
+      }
+      router.push(`/admin/tickets/${reference}`);
+    },
+    [router, statusFilter, holdFilter, search, sortBy, businessValue, engineerValue, pageSize, page, drill, drillLabel]
+  );
 
   // Auto-refresh interval (only when authed and tab is visible-ish)
   useEffect(() => {
@@ -547,8 +647,11 @@ export default function AdminTicketsPage() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(i * 0.012, 0.2) }}
-                    className="cursor-pointer transition-colors hover:bg-surface-raised"
-                    onClick={() => router.push(`/admin/tickets/${t.reference}`)}
+                    data-ticket-ref={t.reference}
+                    className={`cursor-pointer transition-colors hover:bg-surface-raised ${
+                      highlightRef === t.reference ? "bg-amber-50" : ""
+                    }`}
+                    onClick={() => openTicket(t.reference)}
                   >
                     <Td>
                       <span className="font-mono text-[13px] text-ink">{t.reference}</span>
