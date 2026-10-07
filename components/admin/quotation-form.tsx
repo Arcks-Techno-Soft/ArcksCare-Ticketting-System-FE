@@ -716,7 +716,7 @@ function ItemCard({
         </FieldGroup>
         <FieldGroup className="md:col-span-4">
           <div className="mb-2 flex items-baseline justify-between">
-            <Label required>Product name &amp; description</Label>
+            <Label>Product name &amp; description</Label>
             <HighlightButton onClick={() => highlight("headline", headlineRef.current)} />
           </div>
           <Textarea

@@ -52,7 +52,6 @@ function toDraft(p: CatalogueProduct): Draft {
 function validate(d: Draft): Record<string, string> {
   const e: Record<string, string> = {};
   if (!d.name.trim()) e.name = "Name is required";
-  if (!d.headline.trim()) e.headline = "Product name & description is required";
   if (d.default_unit_price.trim() && !/^\d{1,9}(\.\d{1,2})?$/.test(d.default_unit_price.trim()))
     e.default_unit_price = "Enter an amount like 38000 or 38000.50";
   return e;
@@ -321,7 +320,7 @@ function ProductEditor({
         </FieldGroup>
 
         <FieldGroup className="md:col-span-6">
-          <Label required hint="[[…]] prints red">Product name &amp; description</Label>
+          <Label hint="[[…]] prints red">Product name &amp; description</Label>
           <Textarea rows={2} className="min-h-[56px] py-3" value={d.headline} onChange={set("headline")} />
           <FieldError message={errors.headline} />
         </FieldGroup>

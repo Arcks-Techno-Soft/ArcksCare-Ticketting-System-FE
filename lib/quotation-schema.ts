@@ -49,7 +49,7 @@ export const quotationItemSchema = z.object({
   brand: optionalText(80),
   brand_sub_label: optionalText(80),
   model: optionalText(120),
-  headline: z.string().trim().min(1, "Product name / description is required").max(1000),
+  headline: z.string().trim().max(1000),
   spec_lines: optionalText(4000),
   warranty_label: optionalText(80),
   unit_price: money,
